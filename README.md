@@ -41,6 +41,7 @@ Tüm soru-cevap trafiği, API performans metrikleri (istek süresi, kaynaklar) v
 4. **Kullanıcıya Sunum:** Yanıt ve kaynaklar Streamlit ekranında gösterilir. Yanıtın altına üretilen veritabanı ID'sine bağlı geri bildirim butonları eklenir.
 5. **Geri Bildirim Loglama:** Kullanıcı 👍/👎 butonuna bastığında `PUT /api/logs/{log_id}` tetiklenir ve o spesifik kaydın `is_helpful` değeri güncellenir.
 
+```text
 ## 📂 Proje Klasör Yapısı
 
 ├── alembic/                             # Alembic migrations veritabanı şema versiyonları
@@ -59,6 +60,7 @@ Tüm soru-cevap trafiği, API performans metrikleri (istek süresi, kaynaklar) v
 ├── alembic.ini                          # Alembic veritabanı göç yapılandırması
 ├── requirements.txt                     # Python bağımlılıkları listesi
 └── .env                                 # Çevre değişkenleri (Lokal yapılandırma ve Veritabanı URL'i)
+```
 
 ## 🛠️ Kurulum ve Başlatma
 
