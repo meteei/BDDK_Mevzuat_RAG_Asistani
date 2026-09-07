@@ -1,0 +1,40 @@
+{
+    "info": {
+        "name": "BDDK RAG Asistanı API",
+        "description": "Softtech Regülasyon RAG sistemi uç nokta (endpoint) testleri.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Soru Sor (/api/ask)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"query\": \"Birincil ve ikincil sistemler nerede bulundurulmalıdır?\",\n    \"session_id\": \"stajyer_mete_test_01\"\n}"
+                },
+                "url": {
+                    "raw": "http://127.0.0.1:8002/api/ask",
+                    "protocol": "http",
+                    "host": [
+                        "127",
+                        "0",
+                        "0",
+                        "1"
+                    ],
+                    "port": "8002",
+                    "path": [
+                        "api",
+                        "ask"
+                    ]
+                }
+            }
+        }
+    ]
+}

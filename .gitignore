@@ -1,0 +1,13 @@
+# Sanal Ortam
+.venv/
+venv/
+
+# Çevresel Değişkenler ve Şifreler
+.env
+
+# Python Önbellek Dosyaları
+__pycache__/
+*.pyc
+
+# İşletim Sistemi Dosyaları
+.DS_Store
