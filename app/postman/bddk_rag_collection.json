@@ -6,7 +6,7 @@
     },
     "item": [
         {
-            "name": "Soru Sor (/api/ask)",
+            "name": "1. Soru Sor (/api/ask)",
             "request": {
                 "method": "POST",
                 "header": [
@@ -17,22 +17,96 @@
                 ],
                 "body": {
                     "mode": "raw",
-                    "raw": "{\n    \"query\": \"Birincil ve ikincil sistemler nerede bulundurulmalıdır?\",\n    \"session_id\": \"stajyer_mete_test_01\"\n}"
+                    "raw": "{\n    \"query\": \"Birincil ve ikincil sistemler nerede bulundurulmalıdır?\",\n    \"session_id\": \"stajyer_test_01\"\n}"
                 },
                 "url": {
                     "raw": "http://127.0.0.1:8002/api/ask",
                     "protocol": "http",
-                    "host": [
-                        "127",
-                        "0",
-                        "0",
-                        "1"
-                    ],
+                    "host": ["127", "0", "0", "1"],
                     "port": "8002",
-                    "path": [
-                        "api",
-                        "ask"
+                    "path": ["api", "ask"]
+                }
+            }
+        },
+        {
+            "name": "2. Dinamik Belge Yükle (/api/upload)",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                    "mode": "formdata",
+                    "formdata": [
+                        {
+                            "key": "file",
+                            "type": "file",
+                            "description": "Yüklenecek PDF dosyası"
+                        }
                     ]
+                },
+                "url": {
+                    "raw": "http://127.0.0.1:8002/api/upload",
+                    "protocol": "http",
+                    "host": ["127", "0", "0", "1"],
+                    "port": "8002",
+                    "path": ["api", "upload"]
+                }
+            }
+        },
+        {
+            "name": "3. Geçmiş Logları Getir (/api/logs)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "http://127.0.0.1:8002/api/logs?limit=10&skip=0",
+                    "protocol": "http",
+                    "host": ["127", "0", "0", "1"],
+                    "port": "8002",
+                    "path": ["api", "logs"],
+                    "query": [
+                        {
+                            "key": "limit",
+                            "value": "10"
+                        },
+                        {
+                            "key": "skip",
+                            "value": "0"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "4. Geri Bildirim Güncelle (/api/logs/{log_id})",
+            "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                    "raw": "http://127.0.0.1:8002/api/logs/1?is_helpful=true",
+                    "protocol": "http",
+                    "host": ["127", "0", "0", "1"],
+                    "port": "8002",
+                    "path": ["api", "logs", "1"],
+                    "query": [
+                        {
+                            "key": "is_helpful",
+                            "value": "true"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "5. Log Sil (/api/logs/{log_id})",
+            "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                    "raw": "http://127.0.0.1:8002/api/logs/1",
+                    "protocol": "http",
+                    "host": ["127", "0", "0", "1"],
+                    "port": "8002",
+                    "path": ["api", "logs", "1"]
                 }
             }
         }

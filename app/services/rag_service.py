@@ -1,4 +1,7 @@
-from app.prompts.rag_prompts import QA_SYSTEM_PROMPT, CONTEXTUALIZE_Q_SYSTEM_PROMPT
+import os
+import re  # Regex ile metin içinden madde numarası bulmak için eklendi
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_milvus import Milvus
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -18,11 +21,14 @@ vector_store = Milvus(
 )
 retriever = vector_store.as_retriever(search_kwargs={"k": 6})
 
-# 2. Geçmişi Hatırlayan Arama Motoru Promptu (Soruyu Yeniden Formüle Eder)
+# 2. Geçmişi Hatırlayan Arama Motoru Promptu (KRİTİK DÜZELTME)
 contextualize_q_system_prompt = (
     "Sohbet geçmişine ve kullanıcının son sorusuna bak. "
-    "Eğer kullanıcı önceki konuşmalara atıfta bulunuyorsa, bu soruyu tek başına anlaşılabilecek "
-    "bağımsız bir soruya dönüştür. Soruyu cevaplama, sadece gerekiyorsa yeniden formüle et."
+    "Eğer son soru, önceki konuşmalarla bağlantılıysa (örneğin 'bu komite', 'onlar', 'oran nedir' gibi eksik ifadeler içeriyorsa), "
+    "geçmişteki bağlamı kullanarak bu soruyu tek başına anlaşılabilecek bağımsız bir soruya dönüştür. "
+    "Örneğin, geçmişte 'Bilgi Güvenliği Komitesi' konuşulduysa ve yeni soru 'kaç kez toplanır?' ise, "
+    "bunu 'Bilgi Güvenliği Komitesi yılda kaç kez toplanır?' olarak düzelt. "
+    "DİKKAT: SADECE YENİDEN YAZILMIŞ SORUYU DÖNDÜR! Asla soruyu cevaplama, açıklama yapma veya başka bir kelime ekleme."
 )
 contextualize_q_prompt = ChatPromptTemplate.from_messages([
     ("system", contextualize_q_system_prompt),
@@ -67,8 +73,8 @@ conversational_rag_chain = RunnableWithMessageHistory(
 )
 
 
-# Servisi Dışarıya Açan Fonksiyon
-def get_rag_response(user_query: str, session_id: str = "default_session"):
+# 6. Servisi Dışarıya Açan Fonksiyonlar
+def get_rag_response(user_query: str, session_id: str):
     # Hafızalı zinciri çalıştır
     response = conversational_rag_chain.invoke(
         {"input": user_query},
@@ -82,3 +88,41 @@ def get_rag_response(user_query: str, session_id: str = "default_session"):
         "answer": response["answer"],
         "sources": source_texts
     }
+
+
+def process_and_ingest_pdf(file_path: str):
+    """Sisteme yeni yüklenen PDF dosyasını okur, parçalar ve vektör DB'ye ekler."""
+    try:
+        # 1. PDF'i Yükle
+        loader = PyPDFLoader(file_path)
+        docs = loader.load()
+
+        # 2. Metni Parçalara Böl
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        splits = text_splitter.split_documents(docs)
+
+        # 3. ŞEMA DÜZELTMESİ (Kaynak ve Madde No)
+        filename = os.path.basename(file_path)
+        if filename.startswith("temp_"):
+            filename = filename[5:]
+
+        for split in splits:
+            # Zorunlu 'kaynak' alanını ekliyoruz
+            split.metadata["kaynak"] = filename
+
+            # Metnin içinden "MADDE 1", "MADDE 5" gibi sadece rakamları yakalıyoruz
+            match = re.search(r'MADDE\s+(\d+)', split.page_content, re.IGNORECASE)
+            if match:
+                # Bulunan string (metin) değeri 'int' ile tam sayıya dönüştürüyoruz
+                split.metadata["madde_no"] = int(match.group(1))
+            else:
+                # Milvus int64 beklediği için "Genel" metni yerine 0 (sıfır) tam sayısını gönderiyoruz
+                split.metadata["madde_no"] = 0
+
+        # 4. Vektörleştir ve Milvus'a Ekle
+        # (DİKKAT: Bu satır for döngüsünün dışında olmalıydı, girintisi düzeltildi)
+        vector_store.add_documents(splits)
+
+        return len(splits)
+    except Exception as e:
+        raise Exception(f"Belge işlenirken bir hata oluştu: {str(e)}")
