@@ -8,7 +8,7 @@ Kullanıcıların karmaşık bankacılık regülasyonları üzerinden sorular so
 
 ## Belge Kaynağı
 Sistem, arayüz üzerinden dinamik olarak yüklenen PDF belgeleriyle çalışır. Varsayılan senaryoda aşağıdaki belge türleri hedeflenmiştir:
-* **Dosya Tipi:** BDDK Yönetmelikleri (Örn: `Bankaların Bilgi Sistemleri ve Elektronik Bankacılık Hizmetleri Hakkında Yönetmelik`)
+* **Dosya Tipi:** BDDK Yönetmelikleri (Örn: `Bankaların Bilgi Sistemleri ve Elektronik Bankacılık Hizmetleri Hakkında Yönetmelik` veya `GeneratePdf.pdf`)
 * Yüklenen belgeler otomatik olarak parçalanır, meta verileri temizlenir ve Milvus vektör veritabanına indekslenir.
 
 ---
@@ -37,38 +37,23 @@ Tüm soru-cevap trafiği, API performans metrikleri (istek süresi, kaynaklar) v
 1. **Clean Architecture & Mikroservis Mimarisi**:
    - **Backend / Frontend Ayrımı:** Streamlit ön yüzü ile FastAPI arka yüzü tamamen bağımsız çalışır.
    - **Router ↔ Service İzolasyonu:** Her API ucu kendi router dosyasında HTTP katmanını yönetirken, iş mantığı (business logic) service katmanlarında yürütülür.
-2. **Katı Metadata Filtreleme & Ayıklama**: `PyPDFLoader` tarafından üretilen fazla ve uyumsuz dosya meta verileri (`producer`, `creator`, `page` vb.), `document_service.py` içerisinde katı bir filtreleme katmanından geçirilerek temizlenir. Yalnızca Milvus şemasının zorunlu kıldığı `kaynak` ve `madde_no` alanları bırakılarak `MilvusException (code=1100)` hataları tamamen engellenir.
+2. **Katı Metadata Filtreleme & Ayıklama**: `PyPDFLoader` veya diğer işleyicilerden gelen fazla meta veriler, `text_processor.py` ve `document_service.py` içerisinde katı bir filtreleme katmanından geçirilerek temizlenir. Yalnızca Milvus şemasının zorunlu kıldığı `kaynak` ve `madde_no` alanları bırakılarak schema hataları tamamen engellenir.
 3. **Sıfır Halüsinasyon (Zero-Hallucination)**: Katı prompt mühendisliği (Strict Prompting) sayesinde LLM yalnızca Milvus'tan dönen mevzuat bağlamını kullanmaya zorlanır. Bilgi mevzuatta yoksa sistem internetten uydurmak yerine *"Bu bilgi mevzuatta bulunmamaktadır"* yanıtını verir.
 4. **Ölçeklenebilir Vektör Altyapısı**: Milvus ve Cosine metriği ile yüksek performanslı anlamsal aramalar gerçekleştirilir.
 5. **Kaynak Gösterimli (Atıflı) Yanıt Üretimi**: OpenAI, Milvus'tan gelen en ilgili metin parçalarını alıp, hangi belgeden (`kaynak`) ve hangi maddeden (`madde_no`) alındığını belirterek cevap üretir.
 6. **Kullanıcı Geri Bildirim Döngüsü (Feedback Loop)**: Sohbet arayüzünde her cevabın altında 👍 (Faydalı) ve 👎 (Geliştirilmeli) butonları yer alır. Verilen tepkiler anlık olarak PostgreSQL'e işlenir.
-7. **Konuşma Hafızası (Short-Term Memory)**: `RunnableWithMessageHistory` ve `session_id` entegrasyonu sayesinde asistan ardışık sorulardaki bağlamı unutmaz (Örn: *"Peki bu komite ne zaman toplanır?"*).
-
----
-
-## Kullanım Senaryoları
-
-**BDDK Regülasyon ve Denetim Sorguları**
-
-* **Bağlam Korumalı Sorgular:** 
-  - *"Bilgi Güvenliği Komitesi kimlerden oluşur?"*
-  - *"Peki bu komite yılda kaç kez toplanmalıdır?"* (Sistem 'bu komite' ifadesini hafızadan çözer).
-* **Sayısal ve Risk Sorguları:** 
-  - *"Bankaların sermaye yeterliliği standart oranı yasal sınır olarak en az yüzde kaçtır ve bu oran hesaplanırken hangi risk türleri dikkate alınır?"*
-* **Vaka ve İhlal Analizi:** 
-  - *"Banka, ikincil sistemlerini yurt dışında bulunan bir veri merkezine taşımıştır. Bu durum yönetmeliğe uygun mudur? İlgili maddelerle açıklayın."*
+7. **Konuşma Hafızası (Short-Term Memory)**: `RunnableWithMessageHistory` ve `session_id` entegrasyonu sayesinde asistan ardışık sorulardaki bağlamı unutmaz.
 
 ---
 
 ## Mimarisi ve İstek Akışı
 
-1. **Belge Yükleme (Upload/Ingestion)**: Kullanıcı Streamlit arayüzünden PDF yükler. Belge `POST /api/documents/upload` ucuna iletilir.
-2. **Metin İşleme ve Filtreleme**: `document_service.py` PDF'i okur, parçalar (chunks) ve Milvus şemasına uymayan tüm ham meta verileri temizler.
-3. **Vektörleştirme (Embedding)**: LangChain üzerinden OpenAI embeddings modeli çağrılarak her parça vektörleştirilir.
-4. **Vektör Kaydı**: Parçalar `kaynak` ve `madde_no` verileriyle birlikte Milvus koleksiyonuna yazılır.
-5. **RAG Arama**: Kullanıcı Streamlit'ten sorusunu yazar. `POST /api/ask` tetiklenir, History-Aware Retriever önceki mesajlara bakarak soruyu bağımsızlaştırır ve Milvus'ta arar.
-6. **Yanıt Üretimi**: Alınan mevzuat maddeleri LLM'e iletilir. Atıflı yanıt üretilir, yanıt süresi (ms) hesaplanır ve PostgreSQL veritabanına kaydedilir.
-7. **Geri Bildirim ve Loglama**: Kullanıcı yanıta 👍/👎 verdiğinde `PUT /api/logs/{log_id}` tetiklenir. Yöneticiler tüm bu akışı admin paneli üzerinden izler.
+1. **Belge Yükleme (Upload/Ingestion)**: Kullanıcı Streamlit arayüzünden PDF yükler. Belge Backend API ucuna iletilir.
+2. **Metin İşleme ve Filtreleme**: `document_service.py` ve `text_processor.py` devreye girer; PDF'i okur, parçalar (chunks) ve Milvus şemasına uymayan tüm ham meta verileri temizler.
+3. **Vektörleştirme (Embedding)**: `openai_client.py` üzerinden embeddings modeli çağrılarak her parça vektörleştirilir.
+4. **Vektör Kaydı**: Parçalar `kaynak` ve `madde_no` verileriyle birlikte `milvus_client.py` aracılığıyla veritabanına yazılır.
+5. **RAG Arama**: Kullanıcı Streamlit'ten sorusunu yazar. History-Aware Retriever önceki mesajlara bakarak soruyu bağımsızlaştırır ve Milvus'ta arar.
+6. **Yanıt Üretimi**: Alınan mevzuat maddeleri LLM'e iletilir. Atıflı yanıt üretilir, `db_logger.py` ile yanıt süresi (ms) hesaplanıp PostgreSQL'e kaydedilir.
 
 ---
 
@@ -76,34 +61,71 @@ Tüm soru-cevap trafiği, API performans metrikleri (istek süresi, kaynaklar) v
 
 ```text
 BDDK_RAG_Project/
-├── alembic/                             # Alembic veritabanı şema versiyonları ve migrasyonlar
+├── .venv/                               # Python sanal ortamı
+├── alembic/                             # Alembic veritabanı migrasyon (göç) dosyaları
+│   ├── versions/
+│   ├── env.py
+│   ├── README
+│   └── script.py.mako
 ├── backend/                             # Backend mikroservis kök dizini
 │   ├── app/
-│   │   ├── main.py                      # FastAPI ana sunucu başlatıcı, CORS ve router kayıtları
-│   │   ├── database.py                  # SQLAlchemy veritabanı oturum (session) yönetimi
-│   │   ├── clients/                     
-│   │   │   ├── openai_client.py         # OpenAI embeddings ve LLM istemci konfigürasyonu
-│   │   │   └── milvus_client.py         # Milvus vektör veritabanı istemci bağlantısı
-│   │   ├── helpers/                     
-│   │   │   └── text_processor.py        # Metin parçalama (chunking) ve madde no ayıklama asistanı
-│   │   ├── models/                      
-│   │   │   └── models.py                # SQLAlchemy ORM modelleri (API Logs tablosu)
-│   │   ├── schemas/                     
-│   │   │   └── schemas.py               # Pydantic veri doğrulama ve girdi/çıktı şemaları
-│   │   ├── services/
-│   │   │   ├── document_service.py      # PDF okuma, katı metadata temizleme ve Milvus ingestion
-│   │   │   ├── rag_service.py           # LangChain RAG zincirleri, History-Aware Retriever
-│   │   │   └── memory.py                # Session bazlı in-memory konuşma hafızası
-│   │   └── routers/                     
-│   │       ├── document_router.py       # PDF yükleme ve belge yönetim API uç noktaları
-│   │       └── rag_router.py            # Soru-cevap (Ask), loglama ve geri bildirim uç noktaları
-│   └── requirements.txt                 # Backend Python bağımlılıkları listesi
-├── frontend/                            
-│   └── frontend.py                      # Streamlit RAG sohbet, dinamik PDF yükleme, kaynaklar ve admin panel
-├── docker-compose.yml                   # PostgreSQL, Milvus, RustFS ve Attu konteyner yapılandırması
-├── alembic.ini                          # Alembic göç yapılandırma dosyası
-└── .env                                 # Çevre değişkenleri (API anahtarları ve veritabanı URL'i)
-```
+│   │   ├── clients/                     # Harici servis istemcileri
+│   │   │   ├── __init__.py
+│   │   │   ├── milvus_client.py         # Milvus bağlantı yapılandırması
+│   │   │   ├── openai_client.py         # OpenAI (LLM & Embeddings) yapılandırması
+│   │   │   └── rustfs_client.py         # RustFS nesne depolama bağlantısı
+│   │   ├── configs/                     # Uygulama ve veritabanı ayarları
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py                # Çevre değişkenleri ve Pydantic ayar sınıfı
+│   │   │   └── database.py              # SQLAlchemy DB bağlantı motoru
+│   │   ├── helpers/                     # Yardımcı araçlar ve işleyiciler
+│   │   │   ├── __init__.py
+│   │   │   └── text_processor.py        # Metin parçalama (chunking) ve metadata temizleme
+│   │   ├── models/                      # Veritabanı modelleri
+│   │   │   ├── __init__.py
+│   │   │   └── models.py                # API Logları ve diğer ORM tabloları
+│   │   ├── postman/                     # API Test Koleksiyonları
+│   │   │   └── bddk_rag_collection.json
+│   │   ├── prompts/                     # LLM yönlendirme şablonları (Prompts)
+│   │   │   ├── __init__.py
+│   │   │   └── rag_prompts.py           # BDDK denetçi tonunda sistem promptları
+│   │   ├── routers/                     # API Yönlendiricileri (Endpoints)
+│   │   │   ├── v1/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── chat_router.py       # Soru-cevap (Ask), loglama ve geri bildirim uç noktaları
+│   │   │   │   └── document_router.py   # PDF yükleme ve belge yönetim API uç noktaları
+│   │   │   └── __init__.py
+│   │   ├── schemas/                     # Veri doğrulama şemaları (Pydantic)
+│   │   │   ├── __init__.py
+│   │   │   └── schemas.py               # Girdi/Çıktı (Request/Response) şemaları
+│   │   ├── services/                    # Çekirdek İş Mantığı (Business Logic)
+│   │   │   ├── __init__.py
+│   │   │   ├── chat_service.py          # RAG zinciri, arama ve yanıt üretimi
+│   │   │   ├── db_logger.py             # Asenkron veritabanı performans loglama
+│   │   │   ├── document_service.py      # PDF okuma ve Milvus ingestion yönetimi
+│   │   │   └── memory.py                # Session bazlı konuşma hafızası (Short-Term Memory)
+│   │   ├── templates/                   # HTML/Jinja arayüz şablonları
+│   │   │   └── index.html               
+│   │   ├── __init__.py
+│   │   └── main.py                      # FastAPI ana sunucu başlatıcı (App Factory)
+│   ├── .env                             # Backend çevre değişkenleri
+│   ├── __init__.py
+│   └── wsgi.py                          # Geleneksel sunucu başlatıcı
+├── frontend/                            # Streamlit arayüz kök dizini
+│   ├── frontend.py                      # Streamlit ana UI kodları (Sohbet, Yükleme, Panel)
+│   └── run_ui.py                        # Streamlit uygulamasını başlatan betik
+├── scripts/                             # Bağımsız CLI test ve yükleme betikleri
+│   ├── __init__.py
+│   └── ingest_pdf.py                    # CLI üzerinden Milvus'a PDF indeksleme betiği
+├── static/                              # Statik dosyalar ve kaynaklar
+│   └── imports/                         
+│       └── GeneratePdf.pdf              # Örnek test regülasyon dosyası
+├── .gitignore                           # Git tarafından yoksayılacak dosyalar
+├── alembic.ini                          # Alembic yapılandırma dosyası
+├── check_logs.py                        # Log tablolarını test etmek için CLI betiği
+├── docker-compose.yml                   # PostgreSQL, Milvus, RustFS ve Attu konteyner tanımları
+├── README.md                            # Proje ana dokümantasyonu
+└── requirements.txt                     # Proje genel Python bağımlılıkları listesi
 
 ## Kurulum ve Başlatma
 
