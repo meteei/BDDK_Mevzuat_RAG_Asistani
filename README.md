@@ -126,7 +126,7 @@ BDDK_RAG_Project/
 ├── docker-compose.yml                   # PostgreSQL, Milvus, RustFS ve Attu konteyner tanımları
 ├── README.md                            # Proje ana dokümantasyonu
 └── requirements.txt                     # Proje genel Python bağımlılıkları listesi
-
+```
 ## Kurulum ve Başlatma
 
 ### Ön Koşullar
