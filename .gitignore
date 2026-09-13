@@ -1,13 +1,35 @@
-# Sanal Ortam
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Sanal Ortamlar (Virtual Environments)
 .venv/
 venv/
+ENV/
+env/
 
-# Çevresel Değişkenler ve Şifreler
+# Çevresel Değişkenler ve Hassas Bilgiler (API Key vb.)
 .env
+.env.*
+!.env.example
 
-# Python Önbellek Dosyaları
-__pycache__/
-*.pyc
+# IDE ve Editör Ayarları (PyCharm / VS Code)
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# İşletim Sistemi Dosyaları
+# İşletim Sistemi Kalıntıları
 .DS_Store
+Thumbs.db
+
+# Docker ve Veritabanı Kalıntıları (Yerel Hacimler)
+volumes/
+*.db
+*.sqlite3
+
+# Projeye Özel Geçici Dosyalar (PDF yüklemeleri ve loglar)
+temp_*
+*.log
+logs/

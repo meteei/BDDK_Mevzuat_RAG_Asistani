@@ -1,20 +1,26 @@
 import os
 import sys
-# Projenin ana dizinini Python yoluna ekliyoruz ki 'app' modülü bulunsun
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-from app.configs.database import Base
-from app.models.models import APILog
 from logging.config import fileConfig
+from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-
 from alembic import context
+
+# Projenin ana dizinini Python yoluna ekliyoruz ki modüller bulunsun
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from backend.app.configs.database import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# --- ŞİFRE GÜVENLİĞİ VE VERİTABANI BAĞLANTISI ---
+load_dotenv()  # .env dosyasındaki gizli bilgileri okur
+db_url = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@127.0.0.1:5432/rag_logs")
+config.set_main_option("sqlalchemy.url", db_url)
+# -----------------------------------------------
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -23,15 +29,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -43,7 +41,6 @@ def run_migrations_offline() -> None:
 
     Calls to context.execute() here emit the given string to the
     script output.
-
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -62,7 +59,6 @@ def run_migrations_online() -> None:
 
     In this scenario we need to create an Engine
     and associate a connection with the context.
-
     """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),

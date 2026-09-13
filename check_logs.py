@@ -1,7 +1,12 @@
+import os
 from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
 
-# Veritabanı bağlantımız (app.py ile tamamen aynı)
-DATABASE_URL = "postgresql://admin:adminpassword@localhost:5432/rag_logs"
+# .env dosyasındaki gizli bilgileri okur
+load_dotenv()
+
+# Şifreyi açıkça yazmak yerine çevresel değişkenden alıyoruz
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@localhost:5432/rag_logs")
 engine = create_engine(DATABASE_URL)
 
 # Veritabanına bağlanıp log tablosunu okuyoruz

@@ -13,13 +13,12 @@ if "session_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# API Adresimiz
-API_BASE_URL = "http://127.0.0.1:8002/api"
+# API Adresimiz (Backend'i 8080 portunda çalıştırdığımız için güncelledik)
+API_BASE_URL = "http://127.0.0.1:8080/api"
 
 # --- SOL MENÜ (SIDEBAR) ---
 with st.sidebar:
     st.header("🔄 Sohbet Yönetimi")
-    # Hafızayı sıfırlayan ve yeni bir session_id üreten buton
     if st.button("Yeni Sohbet Başlat", use_container_width=True):
         st.session_state.messages = []
         st.session_state.session_id = str(uuid.uuid4())
@@ -27,7 +26,7 @@ with st.sidebar:
 
     st.divider()
 
-    # --- YENİ: DİNAMİK BELGE YÜKLEME ALANI ---
+    # --- DİNAMİK BELGE YÜKLEME ALANI ---
     st.header("📄 Dinamik Belge Yükleme")
     st.caption("Sisteme yeni bir mevzuat veya tebliğ PDF'i ekleyin")
 
@@ -37,12 +36,12 @@ with st.sidebar:
         if uploaded_file is not None:
             with st.spinner("Belge yapay zeka tarafından okunuyor ve vektörleştiriliyor... ⏳"):
                 try:
-                    # Dosyayı FastAPI'nin anlayacağı formata (multipart/form-data) çeviriyoruz
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
-                    res = requests.post(f"{API_BASE_URL}/upload", files=files)
+                    # Yeni versioned documents rotasına istek atıyoruz
+                    res = requests.post(f"{API_BASE_URL}/v1/documents/upload", files=files)
 
                     if res.status_code == 200:
-                        st.success(res.json().get("message"))
+                        st.success(res.json().get("message", "Belge başarıyla eklendi."))
                     else:
                         error_detail = res.json().get("detail", "Bilinmeyen bir hata oluştu.")
                         st.error(f"Yükleme başarısız: {error_detail}")
@@ -52,14 +51,14 @@ with st.sidebar:
             st.warning("Lütfen sisteme eklemek için önce bir PDF dosyası seçin.")
 
     st.divider()
-    # ----------------------------------------
 
     st.header("📊 Yönetici Paneli")
     st.caption("Sistem Performansı ve Loglar (API)")
 
     if st.button("Son İstekleri Göster", use_container_width=True):
         try:
-            response = requests.get(f"{API_BASE_URL}/logs?limit=10")
+            # Versiyonlu veya genel log rotası
+            response = requests.get(f"{API_BASE_URL}/v1/logs?limit=10")
             if response.status_code == 200:
                 logs_data = response.json()
                 if logs_data:
@@ -87,7 +86,7 @@ with st.sidebar:
 
 # --- ANA EKRAN (SOHBET ARAYÜZÜ) ---
 st.title("🏦 BDDK Mevzuat Asistanı")
-st.caption("Softtech Regülasyon RAG Sistemi")
+st.caption("Enterprise RAG Sistemi")
 
 # Önceki mesajları ekranda göster
 for msg in st.session_state.messages:
@@ -112,21 +111,24 @@ if prompt := st.chat_input("BDDK yönetmeliği hakkında bir soru sorun..."):
         message_placeholder.markdown("Asistan belgeleri inceliyor... ⏳")
 
         try:
-            # POST İsteği Atıyoruz
+            # Backend'in beklediği 'query' şeması ile veri gönderiliyor (DÜZELTİLDİ)
             payload = {
                 "query": prompt,
                 "session_id": st.session_state.session_id
             }
-            response = requests.post(f"{API_BASE_URL}/ask", json=payload)
+            response = requests.post(f"{API_BASE_URL}/v1/chat", json=payload)
             response.raise_for_status()
 
             data = response.json()
-            answer = data.get("answer", "Cevap alınamadı.")
+            answer = data.get("answer", data.get("response", "Cevap alınamadı."))
             time_taken = data.get("time_taken_ms", 0)
             sources = data.get("sources", [])
             log_id = data.get("log_id")
 
-            full_response = f"{answer}\n\n*(Yanıt süresi: {time_taken} ms)*"
+            full_response = f"{answer}"
+            if time_taken:
+                full_response += f"\n\n*(Yanıt süresi: {time_taken} ms)*"
+
             message_placeholder.markdown(full_response)
 
             if sources:
@@ -135,7 +137,6 @@ if prompt := st.chat_input("BDDK yönetmeliği hakkında bir soru sorun..."):
                         st.markdown(f"**Kaynak {i}:**\n{source_text}")
                         st.divider()
 
-            # Yeni mesajı hafızaya ekliyoruz
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": full_response,
@@ -151,7 +152,7 @@ if prompt := st.chat_input("BDDK yönetmeliği hakkında bir soru sorun..."):
             message_placeholder.markdown(
                 f"**Bağlantı Hatası:** Arka plan API'si kapalı olabilir. Lütfen Uvicorn sunucusunun çalıştığından emin olun. Hata: {e}")
 
-# --- GERİ BİLDİRİM (FEEDBACK) KONTROLÜ ---
+# --- GERİ BİLDİRİM KONTROLÜ ---
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]
 
@@ -162,14 +163,14 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
 
         with col1:
             if st.button("👍 Evet, faydalıydı", key=f"up_{last_msg['log_id']}"):
-                requests.put(f"{API_BASE_URL}/logs/{last_msg['log_id']}?is_helpful=true")
+                requests.put(f"{API_BASE_URL}/v1/logs/{last_msg['log_id']}?is_helpful=true")
                 st.session_state.messages[-1]["feedback_given"] = True
                 st.session_state.messages[-1]["feedback_is_helpful"] = True
                 st.rerun()
 
         with col2:
             if st.button("👎 Hayır, geliştirmeli", key=f"down_{last_msg['log_id']}"):
-                requests.put(f"{API_BASE_URL}/logs/{last_msg['log_id']}?is_helpful=false")
+                requests.put(f"{API_BASE_URL}/v1/logs/{last_msg['log_id']}?is_helpful=false")
                 st.session_state.messages[-1]["feedback_given"] = True
                 st.session_state.messages[-1]["feedback_is_helpful"] = False
                 st.rerun()

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BDDK Regülasyon Asistanı</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .chat-container { height: calc(100vh - 250px); }
+        .message { max-width: 80%; margin-bottom: 1rem; padding: 1rem; border-radius: 0.5rem; }
+        .user-msg { background-color: #e0f2fe; margin-left: auto; border-bottom-right-radius: 0; }
+        .bot-msg { background-color: #f1f5f9; margin-right: auto; border-bottom-left-radius: 0; }
+        .source-badge { font-size: 0.75rem; background-color: #cbd5e1; padding: 3px 8px; border-radius: 4px; margin-right: 4px; display: inline-block; cursor: pointer; transition: background 0.2s; }
+        .source-badge:hover { background-color: #94a3b8; color: white; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    <div class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+
+        <!-- SOL PANEL: Belge Yükleme -->
+        <div class="md:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-fit">
+            <h2 class="text-xl font-bold mb-4 text-slate-700">📄 Belge Yükle</h2>
+            <p class="text-sm text-slate-500 mb-4">Milvus vektör veritabanına yeni regülasyon (PDF) ekleyin.</p>
+
+            <input type="file" id="pdfFile" accept="application/pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-4 cursor-pointer"/>
+
+            <button onclick="uploadDocument()" id="uploadBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors shadow-sm">
+                Veritabanına Ekle
+            </button>
+            <p id="uploadStatus" class="text-sm mt-3 font-medium"></p>
+        </div>
+
+        <!-- SAĞ PANEL: Sohbet Arayüzü -->
+        <div class="md:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
+            <div class="p-4 border-b border-slate-100 bg-slate-800 rounded-t-xl text-white flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold">🏛️ BDDK Yapay Zeka Asistanı</h1>
+                    <p class="text-sm text-slate-300">Enterprise RAG Regülasyon Asistanı</p>
+                </div>
+                <button onclick="clearChat()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded-lg transition">Sohbeti Temizle</button>
+            </div>
+
+            <!-- Sohbet Geçmişi -->
+            <div id="chatBox" class="chat-container overflow-y-auto p-6 bg-slate-50 space-y-4">
+                <div class="message bot-msg shadow-sm">
+                    Merhaba! Ben BDDK Regülasyon Asistanıyım. Size mevzuat konusunda nasıl yardımcı olabilirim?
+                </div>
+            </div>
+
+            <!-- Mesaj Gönderme Alanı -->
+            <div class="p-4 bg-white border-t border-slate-200 rounded-b-xl flex gap-2">
+                <input type="text" id="userInput" placeholder="Mevzuatla ilgili sorunuzu buraya yazın (Örn: Sermaye yeterliliği...)" class="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm" onkeypress="handleKeyPress(event)">
+                <button onclick="askQuestion()" id="sendBtn" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-6 rounded-lg transition-colors text-sm shadow-sm">
+                    Gönder
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Benzersiz oturum kimliği (session_id)
+        const sessionId = "sess_" + Math.random().toString(36).substr(2, 9);
+
+        async function uploadDocument() {
+            const fileInput = document.getElementById('pdfFile');
+            const statusText = document.getElementById('uploadStatus');
+            const btn = document.getElementById('uploadBtn');
+
+            if (fileInput.files.length === 0) {
+                statusText.innerText = "Lütfen bir PDF seçin!";
+                statusText.className = "text-sm mt-3 font-medium text-red-500";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            btn.disabled = true;
+            btn.innerText = "Yükleniyor...";
+            statusText.innerText = "PDF parçalanıyor ve Milvus'a ekleniyor. Lütfen bekleyin...";
+            statusText.className = "text-sm mt-3 font-medium text-blue-500";
+
+            try {
+                // Backend'deki güncel versiyonlu doküman rotasıyla eşitledik
+                const response = await fetch('/api/v1/documents/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusText.innerText = "✅ Başarılı: " + (data.message || "Belge eklendi.");
+                    statusText.className = "text-sm mt-3 font-medium text-green-600";
+                    fileInput.value = "";
+                } else {
+                    let errorDetail = typeof data.detail === 'object' ? JSON.stringify(data.detail) : (data.detail || "Yükleme başarısız.");
+                    statusText.innerText = "❌ Hata: " + errorDetail;
+                    statusText.className = "text-sm mt-3 font-medium text-red-500";
+                }
+            } catch (error) {
+                statusText.innerText = "❌ Sunucu bağlantı hatası oluştu!";
+                statusText.className = "text-sm mt-3 font-medium text-red-500";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Veritabanına Ekle";
+            }
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                askQuestion();
+            }
+        }
+
+        function clearChat() {
+            const chatBox = document.getElementById('chatBox');
+            chatBox.innerHTML = `
+                <div class="message bot-msg shadow-sm">
+                    Sohbet temizlendi. Yeni bir soru sorabilirsiniz!
+                </div>
+            `;
+        }
+
+        async function askQuestion() {
+            const input = document.getElementById('userInput');
+            const query = input.value.trim();
+            if (!query) return;
+
+            const chatBox = document.getElementById('chatBox');
+            const btn = document.getElementById('sendBtn');
+
+            // Kullanıcı mesajını ekle
+            chatBox.innerHTML += `<div class="message user-msg shadow-sm">${escapeHtml(query)}</div>`;
+            input.value = "";
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Yükleniyor mesajı
+            const loadingId = "loading_" + Date.now();
+            chatBox.innerHTML += `<div id="${loadingId}" class="message bot-msg shadow-sm text-slate-500 italic">Asistan regülasyonları inceliyor... ⏳</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+            btn.disabled = true;
+
+            try {
+                // DÜZELTİLDİ: 'question' yerine 'query' gönderiyoruz!
+                const response = await fetch('/api/v1/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query, session_id: sessionId })
+                });
+
+                const data = await response.json();
+                document.getElementById(loadingId).remove(); // Yükleniyor yazısını kaldır
+
+                if (response.ok) {
+                    let answerText = data.answer || data.response || "Yanıt alınamadı.";
+                    let timeTaken = data.time_taken_ms ? `<div class="text-xs text-slate-400 mt-2 text-right">Yanıt süresi: ${data.time_taken_ms}ms</div>` : '';
+
+                    let sourceHtml = "";
+                    if (data.sources && data.sources.length > 0) {
+                        sourceHtml = `<div class="mt-3 border-t border-slate-200 pt-2"><span class="text-xs font-bold text-slate-500 mb-1 block">Dayanılan Mevzuat Kaynakları:</span><div class="flex flex-wrap gap-1">`;
+                        data.sources.forEach((src, idx) => {
+                            let cleanSrc = escapeHtml(src);
+                            let preview = cleanSrc.substring(0, 35) + "...";
+                            sourceHtml += `<span class="source-badge" title="${cleanSrc}" onclick="alert('Kaynak ${idx+1}:\\n\\n${cleanSrc.replace(/'/g, "\\'")}')">[Kaynak ${idx+1}] ${preview}</span>`;
+                        });
+                        sourceHtml += `</div></div>`;
+                    }
+
+                    chatBox.innerHTML += `<div class="message bot-msg shadow-sm leading-relaxed">${answerText} ${sourceHtml} ${timeTaken}</div>`;
+                } else {
+                    // DÜZELTİLDİ: Hata mesajı eğer object olarak gelirse (422 Pydantic Hatası gibi), onu düzgün metne çevirir.
+                    let errorMsg = data.detail || 'Bilinmeyen hata';
+                    if (typeof errorMsg === 'object') {
+                        errorMsg = JSON.stringify(errorMsg);
+                    }
+                    chatBox.innerHTML += `<div class="message bot-msg shadow-sm text-red-500 border border-red-200">Bir hata oluştu: ${errorMsg}</div>`;
+                }
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+                chatBox.innerHTML += `<div class="message bot-msg shadow-sm text-red-500 border border-red-200">Sunucuyla iletişim kurulamadı. Lütfen FastAPI servisinin açık olduğundan emin olun.</div>`;
+            } finally {
+                chatBox.scrollTop = chatBox.scrollHeight;
+                btn.disabled = false;
+                input.focus();
+            }
+        }
+
+        // XSS Güvenliği için basit karakter escape fonksiyonu
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+    </script>
+</body>
+</html>
