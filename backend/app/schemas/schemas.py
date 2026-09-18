@@ -1,14 +1,35 @@
-from pydantic import BaseModel
-from typing import List, Optional
+# backend/app/schemas/schemas.py
 
-class QueryRequest(BaseModel):
-    query: str
-    session_id: Optional[str] = None  # Frontend göndermezse None olacak, Backend kendisi benzersiz UUID üretecek.
+from typing import Optional, List
+from pydantic import BaseModel, Field
 
-class QueryResponse(BaseModel):
-    log_id: int
-    query: str
-    answer: str
-    time_taken_ms: int
-    sources: List[str] = []
-    session_id: str  # Kullanılan oturum kimliğini arayüze geri döndürmek için eklendi.
+
+class ChatRequest(BaseModel):
+    message: str = Field(
+        ..., 
+        description="Kullanıcının BDDK regülasyonları ve bankacılık mevzuatı ile ilgili sorusu", 
+        examples=["Birincil ve ikincil sistemler nerede bulundurulmalıdır?"]
+    )
+    session_id: Optional[str] = Field(
+        None, 
+        description="Konuşma oturum kimliği. Gönderilmezse otomatik üretilir."
+    )
+
+
+class ChatResponse(BaseModel):
+    response: str = Field(
+        ..., 
+        description="Yapay zeka asistanının mevzuata dayalı denetçi tonundaki cevabı"
+    )
+    status: str = Field(
+        "success", 
+        description="İşlem durumu"
+    )
+    session_id: str = Field(
+        ..., 
+        description="Konuşma oturum kimliği"
+    )
+    sources: List[str] = Field(
+        default=[], 
+        description="Cevabın dayandığı kaynak belge ve madde bilgileri"
+    )

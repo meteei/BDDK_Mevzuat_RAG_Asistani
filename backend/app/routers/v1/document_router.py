@@ -1,37 +1,74 @@
-# backend/app/routers/v1/document_router.py
 import os
-import shutil
-import logging
-from fastapi import APIRouter, HTTPException, File, UploadFile
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
+from sqlalchemy.orm import Session
 
-from app.services.document_service import process_and_ingest_pdf
+from app.configs.database import get_db
+from app.services.document_service import list_documents, delete_document, process_upload
 
-logger = logging.getLogger("Document_Router")
+router = APIRouter()
 
-router = APIRouter(prefix="/documents", tags=["Document Management"])
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.csv', '.txt'}
+
+
+# 1. GET /documents — Yüklü Belgeleri Listeleme
+
+@router.get("/documents")
+def get_documents(db: Session = Depends(get_db)):
+    """
+    Sisteme yüklenmiş olan tüm belgeleri (PDF, Word, CSV, TXT)
+    veritabanından çekerek listeler.
+    """
+    try:
+        return list_documents(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Belgeler listelenirken hata oluştu: {str(e)}")
+
+
+# 2. DELETE /documents/{doc_id} — Belge Silme
+
+@router.delete("/documents/{doc_id}")
+def remove_document(doc_id: int, db: Session = Depends(get_db)):
+    """
+    Belirtilen belgeyi hem SQL Server'dan siler hem de
+    Milvus vektör veritabanındaki o belgeye ait tüm chunk'ları temizler.
+    """
+    try:
+        result = delete_document(doc_id, db)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Belge silinirken hata oluştu: {str(e)}")
+
+
+# 3. POST /upload — Belge Yükleme
 
 @router.post("/upload")
-async def upload_document(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".pdf"):
-        logger.warning(f"Geçersiz dosya formatı reddedildi: {file.filename}")
-        raise HTTPException(status_code=400, detail="Sadece PDF formatında dosyalar yüklenebilir.")
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Yüklenen PDF, DOCX, CSV ve TXT dosyalarını kabul eder,
+    metinlerini çıkarıp Chonkie ile parçalar, Azure OpenAI ile embed eder ve Milvus'a yazar.
+    Dosya durumunu veritabanı (MSSQL) üzerinden takip eder.
+    """
+    file_ext = os.path.splitext(file.filename)[1].lower()
 
-    temp_file_path = f"temp_{file.filename}"
-    logger.info(f"PDF yükleme süreci başlatıldı: {file.filename}")
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Desteklenmeyen dosya türü. Kabul edilen türler: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    file_content = await file.read()
 
     try:
-        with open(temp_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        chunks_count = process_and_ingest_pdf(temp_file_path)
-        logger.info(f"'{file.filename}' başarıyla işlendi. Parça sayısı: {chunks_count}")
-
-        return {
-            "message": f"'{file.filename}' başarıyla yüklendi. Belge {chunks_count} parçaya bölünüp veritabanına eklendi."
-        }
+        result = process_upload(file.filename, file_ext, file_content, db)
+        return result
     except Exception as e:
-        logger.error(f"PDF yükleme/işleme sırasında hata oluştu ({file.filename}): {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"'{file.filename}' işlenirken ve indekslenirken hata oluştu: {str(e)}"
+        )

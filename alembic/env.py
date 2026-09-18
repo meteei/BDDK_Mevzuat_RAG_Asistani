@@ -1,25 +1,32 @@
 import os
 import sys
 from logging.config import fileConfig
-from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 
-# Projenin ana dizinini Python yoluna ekliyoruz ki modüller bulunsun
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# 1. KRİTİK YOL DÜZELTMESİ:
+# Alembic'e ana dizini değil, doğrudan 'backend' dizinini tanıtıyoruz.
+# Böylece proje içindeki tüm "from app.xxx import yyy" komutları hatasız çalışır.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
 
-from backend.app.configs.database import Base
+# 2. PROJE AYARLARI VE MODELLERİ İÇERİ AKTARMA
+from app.configs.config import settings
+from app.configs.database import Base
+
+# Alembic'in yeni eklediğimiz tabloları görüp '--autogenerate' yapabilmesi için
+# modelleri mutlaka burada import etmeliyiz! (Kullanmasak bile import edilmeli)
+from app.models.models import ChatLog, UploadedDocument
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-# --- ŞİFRE GÜVENLİĞİ VE VERİTABANI BAĞLANTISI ---
-load_dotenv()  # .env dosyasındaki gizli bilgileri okur
-db_url = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@127.0.0.1:5432/rag_logs")
-config.set_main_option("sqlalchemy.url", db_url)
+# --- VERİTABANI BAĞLANTISI ---
+# Pydantic (settings) zaten .env dosyasını otomatik ve güvenli bir şekilde okuduğu için
+# ekstra load_dotenv() kullanmamıza gerek kalmadı. Doğrudan settings.POSTGRES_URL'i veriyoruz.
+config.set_main_option("sqlalchemy.url", settings.POSTGRES_URL)
 # -----------------------------------------------
 
 # Interpret the config file for Python logging.
@@ -32,16 +39,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-    """
+    """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -55,11 +53,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-    """
+    """Run migrations in 'online' mode."""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

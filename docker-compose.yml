@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # 1. PostgreSQL (Loglar ve Geri Bildirimler için)
+  # 1. PostgreSQL (Loglar ve Doküman Takibi İçin - Senin Tercihin Korundu)
   postgres:
     image: postgres:15
     container_name: bddk_postgres
@@ -14,65 +14,82 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. Etcd (Milvus'un metadata ve koordinasyon yöneticisi)
-  etcd:
-    container_name: bddk_milvus_etcd
+  # 2. Etcd (Referans projedeki versiyon ve healthcheck korumaları eklendi)
+  milvus-etcd:
+    container_name: milvus-etcd
     image: quay.io/coreos/etcd:v3.5.5
     environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_AUTO_COMPACTION_RETENTION=1000
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
+      - ETCD_AUTO_COMPACTION_RETENTION=1
     volumes:
-      - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://12.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
-  # 3. RustFS (Milvus'un Yeni Nesil S3 Uyumlu Nesne Depolama Motoru)
+  # 3. RustFS (Referans projedeki güncel beta sürümü ve detaylı konfigürasyonları eklendi)
   rustfs:
-    container_name: bddk_rustfs_storage
-    image: rustfs/rustfs:latest
+    container_name: rustfs
+    image: rustfs/rustfs:1.0.0-beta.11
     environment:
-      - RUSTFS_ACCESS_KEY=minioadmin
-      - RUSTFS_SECRET_KEY=minioadmin
-      - RUSTFS_ADDRESS=:9000
-      - RUSTFS_CONSOLE_ADDRESS=:9001
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=0.0.0.0:9000
       - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_ACCESS_KEY=rustfsadmin
+      - RUSTFS_SECRET_KEY=rustfsadmin
+      - RUSTFS_REGION=us-east-1
+      - RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_OBS_LOGGER_LEVEL=info
+      - TZ=Europe/Istanbul
     ports:
-      - "9000:9000"
       - "9001:9001"
+      - "9000:9000"
     volumes:
-      - rustfs_data:/data
+      - rustfs-data:/data
+    restart: unless-stopped
 
-  # 4. Milvus (Vektör Veritabanı)
-  standalone:
-    container_name: bddk_milvus
-    image: milvusdb/milvus:v2.3.1
+  # 4. Milvus Standalone (Referans projedeki güncel v2.4.0 sürüme çekildi)
+  milvus-standalone:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.4.0
     command: ["milvus", "run", "standalone"]
     environment:
-      ETCD_ENDPOINTS: etcd:2379
+      ETCD_ENDPOINTS: milvus-etcd:2379
       MINIO_ADDRESS: rustfs:9000
-    volumes:
-      - milvus_data:/var/lib/milvus
+      MINIO_ACCESS_KEY_ID: rustfsadmin
+      MINIO_SECRET_ACCESS_KEY: rustfsadmin
     ports:
       - "19530:19530"
       - "9091:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     depends_on:
-      - "etcd"
-      - "rustfs"
+      milvus-etcd:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
 
-  # 5. Attu (Milvus Görsel Yönetim Paneli)
+  # 5. Attu (Milvus Görsel Arayüzü, v2.4.0 uyumlu hale getirildi)
   attu:
-    container_name: bddk_attu
-    image: zilliz/attu:v2.3.1
-    environment:
-      MILVUS_URL: standalone:19530
+    container_name: attu
+    image: zilliz/attu:v2.4.0
     ports:
-      - "8000:3000"
+      - "8001:3000"
+    environment:
+      - MILVUS_URL=milvus-standalone:19530
     depends_on:
-      - "standalone"
+      - milvus-standalone
 
 volumes:
   postgres_data:
-  etcd_data:
-  rustfs_data:
-  milvus_data:
+  etcd-data:
+  rustfs-data:
+  milvus-data:

@@ -1,25 +1,22 @@
-# backend/app/configs/database.py
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import logging
-
-# Ayarları (Settings) içeri aktarıyoruz
+from sqlalchemy.ext.declarative import declarative_base
 from app.configs.config import settings
 
-logger = logging.getLogger("Database")
+# PostgreSQL bağlantısı için SQLAlchemy motoru oluşturma
+engine = create_engine(
+    settings.POSTGRES_URL,
+    pool_pre_ping=True,   # Kopan bağlantıları otomatik tespit eder ve yeniler
+    pool_recycle=1800,    # Açık bağlantıları 30 dakikada bir tazeleyerek timeout'u önler
+)
 
-# Hardcoded URL yerine artık settings.POSTGRES_URL kullanıyoruz
-SQLALCHEMY_DATABASE_URL = settings.POSTGRES_URL
-
-logger.info("PostgreSQL veritabanı motoru başlatılıyor...")
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-
+# Senkron veritabanı oturum (Session) oluşturma
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Modeller için temel sınıf
 Base = declarative_base()
 
-# Dependency (FastAPI router'larında kullanmak için)
+# FastAPI Dependency (Bağımlılık Enjeksiyonu) olarak veritabanı oturumu yönetimi
 def get_db():
     db = SessionLocal()
     try:

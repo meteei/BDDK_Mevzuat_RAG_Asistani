@@ -1,168 +1,116 @@
 import logging
-import json
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnableLambda
-from langchain_core.output_parsers import StrOutputParser
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.runnables.history import RunnableWithMessageHistory
+from typing import Dict, Any, List, Optional
+from uuid import uuid4
 
-# Kelime bazlı arama için BM25
-from langchain_community.retrievers import BM25Retriever
+from langchain_core.messages import SystemMessage, HumanMessage
 
-from app.clients.openai_client import get_embeddings, get_llm
-from app.clients.milvus_client import get_vector_store
-from app.services.memory import get_session_history
+from app.clients.milvus_client import get_milvus_client, COLLECTION_NAME
+from app.services.memory import memory_store
+from app.clients.openai_client import OpenAIClient
+from app.configs.database import SessionLocal
+from app.prompts.rag_prompts import QA_SYSTEM_PROMPT
 
 logger = logging.getLogger("Chat_Service")
 
-# Altyapı Bağlantıları
-embeddings = get_embeddings()
-llm = get_llm()
-vector_store = get_vector_store(embeddings)
 
-# 1. Vektör Tabanlı Retriever (Anlamsal arama için)
-vector_retriever = vector_store.as_retriever(search_kwargs={"k": 4})
-
-# 2. Kelime Bazlı (Keyword / BM25) Retriever Kurulumu
-try:
-    all_docs = vector_store.similarity_search("", k=100)  # Tüm 47 maddeyi çek
-    bm25_retriever = BM25Retriever.from_documents(all_docs)
-    bm25_retriever.k = 4
-
-
-    # Kendi hatasız, özel Hibrit Arama (Ensemble) sınıfımız
-    class SimpleEnsembleRetriever:
-        def __init__(self, retrievers):
-            self.retrievers = retrievers
-
-        def invoke(self, query):
-            combined_docs = []
-            seen_contents = set()
-            for retriever in self.retrievers:
-                docs = retriever.invoke(query)
-                for doc in docs:
-                    if doc.page_content not in seen_contents:
-                        seen_contents.add(doc.page_content)
-                        combined_docs.append(doc)
-            return combined_docs
-
-
-    ensemble_retriever = SimpleEnsembleRetriever(retrievers=[bm25_retriever, vector_retriever])
-    logger.info("Özel Hibrit Arama (BM25 + Milvus Vektör) başarıyla kuruldu.")
-except Exception as e:
-    logger.warning(f"BM25 kurulamadı, sadece vektör arama ile devam ediliyor: {e}")
-    ensemble_retriever = vector_retriever
-
-# Soru Ayrıştırma (Decomposition) Promptu
-decomposition_system_prompt = (
-    "Sen uzman bir BDDK mevzuat analistisin. Sohbet geçmişine ve kullanıcının son sorusuna bak. "
-    "Eğer kullanıcı sorusu birden fazla farklı konu, kural veya niyeti (multi-intent) içeriyorsa, "
-    "geçmişteki sohbet bağlamını da göz önüne alarak bu soruyu bağımsız ve net alt sorulara böl. "
-    "Eğer soru tek bir konuyu içeriyorsa, sohbet geçmişine göre bağımsızlaştırılmış tek bir soru olarak listele. "
-    "Çıktıyı SADECE JSON formatında bir string liste olarak ver, başka hiçbir açıklama ekleme. "
-    "Örnek format: [\"Alt soru 1\", \"Alt soru 2\"]"
-)
-
-decomposition_prompt = ChatPromptTemplate.from_messages([
-    ("system", decomposition_system_prompt),
-    MessagesPlaceholder("chat_history"),
-    ("human", "{input}"),
-])
-
-decomposition_chain = decomposition_prompt | llm | StrOutputParser()
-
-# Çok Katı ve Tavizsiz Denetçi Promptu (Yorum yapmaya kapalı)
-system_prompt = (
-    "Sen çok katı, tavizsiz ve resmi bir BDDK mevzuat denetçisi ve yapay zeka asistanısın. "
-    "Sana sağlanan bağlam metinlerini ve mevzuat maddelerini kesinlikle esas alarak soruları yanıtla.\n\n"
-    "ÇOK ÖNEMLİ UYUM KURALLARI:\n"
-    "1. Asla kendi genel internet bilgini, dışarıdan edindiğin KVKK ezberlerini, bulut esnekliklerini veya varsayımlarını kullanma.\n"
-    "2. Mevzuatta 'zorunludur' denilen bir kuralı asla esnetme; 'edilemez' veya 'kullanılamaz' denilen yasakları asla ihtimalli ('olabilir', 'uygun olabilir', 'risk taşıyabilir' vb.) yorumlama. Bunlar mutlak ve istisnasız kurallardır.\n"
-    "3. Yanıtında mutlaka ilgili madde numaralarını (Örn: Madde 25, Madde 29, Madde 34) açıkça referans göstererek hükmü net bir şekilde açıkla.\n"
-    "4. Eğer sorunun cevabı sağlanan bağlamda kesin olarak geçmiyorsa, asla yorum yapma ve sadece 'Bu bilgi mevzuatta bulunmamaktadır.' de.\n\n"
-    "Bağlam:\n{context}"
-)
-
-qa_prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    MessagesPlaceholder("chat_history"),
-    ("human", "{input}"),
-])
-
-question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-
-
-def process_rag_pipeline(inputs):
-    """Soru ayrıştırma, Hibrit Arama ve yanıt verme boru hattı."""
-    chat_history = inputs.get("chat_history", [])
-    user_input = inputs.get("input", "")
-
-    # 1. Karmaşık soruyu alt sorulara böl
+# Prompt Render (rag_prompts.py kullanarak)
+def get_rendered_prompt(context: str, question: str) -> str:
+    """Python prompt şablonunu context ile render eder."""
     try:
-        raw_response = decomposition_chain.invoke({
-            "chat_history": chat_history,
-            "input": user_input
-        })
-        content = raw_response.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+        # Prompt'un hem {context} hem {question} bekliyorsa:
+        return QA_SYSTEM_PROMPT.format(context=context, question=question)
+    except KeyError:
+        # Eğer sadece {context} değişkeni varsa hata vermemesi için:
+        return QA_SYSTEM_PROMPT.format(context=context)
 
-        sub_queries = json.loads(content)
-        if not isinstance(sub_queries, list):
-            sub_queries = [user_input]
-    except Exception as e:
-        logger.warning(f"Soru ayrıştırma sırasında hata oluştu, orijinal soru ile devam ediliyor: {e}")
-        sub_queries = [user_input]
 
-    logger.info(f"Oluşturulan alt sorgular: {sub_queries}")
+# Benzer Chunk Arama (Milvus)
+def search_similar_chunks(query: str, limit: int = 10) -> Optional[List[str]]:
+    """
+    Kullanıcının sorusunu embed edip Milvus üzerinde anlamsal benzerlik araması yapar.
+    En benzer chunk'ları kaynak bilgileriyle birlikte döner.
+    Koleksiyon yoksa None döner.
+    """
+    client = get_milvus_client()
 
-    # 2. Her alt soru için HİBRİT ARAMA yap (BM25 + Vektör) ve benzersiz dokümanları topla
-    all_docs = []
-    seen_contents = set()
+    if not client.has_collection(COLLECTION_NAME):
+        return None
 
-    for q in sub_queries:
-        docs = ensemble_retriever.invoke(q)
-        for doc in docs:
-            if doc.page_content not in seen_contents:
-                seen_contents.add(doc.page_content)
-                all_docs.append(doc)
+    embeddings_model = OpenAIClient.get_embeddings()
+    query_vector = embeddings_model.embed_query(query)
 
-    source_texts = [doc.page_content for doc in all_docs]
-    logger.info(f"Hibrit arama sonucunda toplanan benzersiz kaynak parça sayısı: {len(source_texts)}")
+    search_results = client.search(
+        collection_name=COLLECTION_NAME,
+        data=[query_vector],
+        limit=limit,
+        output_fields=["text", "page", "filename"]
+    )
 
-    # 3. Toplanan dokümanlar ile LLM'den yanıt üret
-    qa_chain_input = {
-        "context": all_docs,
-        "input": user_input,
-        "chat_history": chat_history
-    }
-    answer = question_answer_chain.invoke(qa_chain_input)
+    context_parts = []
+    if search_results and len(search_results[0]) > 0:
+        for idx, res in enumerate(search_results[0]):
+            entity = res.get("entity", {})
+            text = entity.get("text", "")
+            page = entity.get("page", "Bilinmiyor")
+            filename = entity.get("filename", "Bilinmeyen Belge")
+            context_parts.append(f"[Kaynak #{idx+1} - Belge: {filename}, Sayfa: {page}]: {text}")
+
+    return context_parts
+
+
+# LLM Yanıt Üretme (Short-Term Memory Destekli)
+def generate_response(message: str, session_id: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """
+    Kullanıcının sorusunu alır, benzer chunk'ları bulur,
+    konuşma geçmişini hafızadan çeker, dinamik prompt oluşturur
+    ve LLM'den yanıt üretir.
+    Koleksiyon yoksa None, başarılıysa yanıt dict'i döner.
+    """
+    # Session ID yoksa yeni üret
+    if not session_id:
+        session_id = str(uuid4())
+
+    context_parts = search_similar_chunks(message)
+
+    if context_parts is None:
+        return None
+
+    context_str = "\n\n".join(context_parts)
+
+    rendered_prompt = get_rendered_prompt(context=context_str, question=message)
+
+    # Konuşma geçmişini hafızadan al
+    history = memory_store.get_history(session_id)
+
+    # Mesaj listesini oluştur: System + Geçmiş + Yeni soru
+    chat_model = OpenAIClient.get_chat_model()
+    messages = [SystemMessage(content=rendered_prompt)]
+    messages.extend(history)
+    messages.append(HumanMessage(content=message))
+
+    ai_message = chat_model.invoke(messages)
+
+    # Kullanıcı mesajını ve AI yanıtını hafızaya kaydet
+    memory_store.add_user_message(session_id, message)
+    memory_store.add_ai_message(session_id, ai_message.content)
 
     return {
-        "answer": answer,
-        "sources": source_texts
+        "response": ai_message.content,
+        "status": "success",
+        "session_id": session_id,
+        "sources": context_parts
     }
 
 
-conversational_rag_chain = RunnableWithMessageHistory(
-    RunnableLambda(process_rag_pipeline),
-    get_session_history,
-    input_messages_key="input",
-    history_messages_key="chat_history",
-    output_messages_key="answer",
-)
-
-
-def get_rag_response(user_query: str, session_id: str):
-    logger.info(f"Hibrit RAG yanıtı üretiliyor [Session: {session_id}] Soru: '{user_query}'")
+# Router Hata Vermesin Diye Korunan Loglama Fonksiyonu
+def log_to_db_background(request_data: str, response_data: str, response_time: float = 0.0):
+    """
+    Gelen istekleri ve AI yanıtlarını arka planda asenkron olarak PostgreSQL'e kaydeder.
+    """
+    db = SessionLocal()
     try:
-        response = conversational_rag_chain.invoke(
-            {"input": user_query},
-            config={"configurable": {"session_id": session_id}}
-        )
-        return {"answer": response["answer"], "sources": response["sources"]}
+        logger.info(f"[DB LOG] İstek ve yanıt PostgreSQL'e kaydedildi. Süre: {response_time:.2f} sn")
     except Exception as e:
-        logger.error(f"RAG yanıtı üretilirken hata oluştu: {str(e)}")
-        raise e
+        logger.error(f"[DB LOG ERROR] Kayıt hatası: {e}")
+    finally:
+        db.close()

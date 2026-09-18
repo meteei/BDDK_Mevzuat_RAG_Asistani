@@ -1,7 +1,7 @@
 {
     "info": {
         "name": "BDDK RAG Asistanı API",
-        "description": "Softtech Regülasyon RAG sistemi uç nokta (endpoint) testleri.",
+        "description": "Softtech Regülasyon RAG sistemi kurumsal uç nokta (endpoint) testleri.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "item": [
@@ -107,6 +107,20 @@
                     "host": ["127", "0", "0", "1"],
                     "port": "8002",
                     "path": ["api", "logs", "1"]
+                }
+            }
+        },
+        {
+            "name": "6. Yüklenen Belgeleri Getir (/api/documents)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "http://127.0.0.1:8002/api/documents",
+                    "protocol": "http",
+                    "host": ["127", "0", "0", "1"],
+                    "port": "8002",
+                    "path": ["api", "documents"]
                 }
             }
         }

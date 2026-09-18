@@ -82,8 +82,8 @@
             statusText.className = "text-sm mt-3 font-medium text-blue-500";
 
             try {
-                // Backend'deki güncel versiyonlu doküman rotasıyla eşitledik
-                const response = await fetch('/api/v1/documents/upload', {
+                // Yükleme uç noktası, FastAPI projenle uyumlu olacak şekilde:
+                const response = await fetch('/api/documents/upload', {
                     method: 'POST',
                     body: formData
                 });
@@ -123,6 +123,31 @@
             `;
         }
 
+        // Asistan yanıtını .md (Markdown) olarak indirme fonksiyonu
+        function downloadReport(answerText, sourcesArray) {
+            let exportContent = `# BDDK MEVZUAT DENETİM RAPORU\n`;
+            exportContent += `Oturum Kimliği (Session ID): ${sessionId}\n`;
+            exportContent += `Sistem: Enterprise RAG BDDK Denetim Asistanı\n\n`;
+            exportContent += `## 📋 Denetçi Değerlendirmesi ve İhlaller\n${answerText}\n\n`;
+            exportContent += `---\n## 📚 Dayanılarak İncelenen Mevzuat Kaynakları\n`;
+
+            if (sourcesArray && sourcesArray.length > 0) {
+                sourcesArray.forEach((src, idx) => {
+                    exportContent += `\n[Kaynak ${idx + 1}]\n${src}\n`;
+                });
+            }
+
+            const blob = new Blob([exportContent], { type: 'text/markdown;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `BDDK_Denetim_Raporu_${Date.now()}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
         async function askQuestion() {
             const input = document.getElementById('userInput');
             const query = input.value.trim();
@@ -143,17 +168,18 @@
             btn.disabled = true;
 
             try {
-                // DÜZELTİLDİ: 'question' yerine 'query' gönderiyoruz!
-                const response = await fetch('/api/v1/chat', {
+                const response = await fetch('/api/chat/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query, session_id: sessionId })
+                    // DÜZELTME: Backend'in beklediği "message" parametresi olarak güncellendi.
+                    body: JSON.stringify({ message: query, session_id: sessionId })
                 });
 
                 const data = await response.json();
-                document.getElementById(loadingId).remove(); // Yükleniyor yazısını kaldır
+                document.getElementById(loadingId).remove();
 
                 if (response.ok) {
+                    // Backend "response" dönüyor, arayüz hem "answer" hem "response" okuyacak şekilde uyarlandı
                     let answerText = data.answer || data.response || "Yanıt alınamadı.";
                     let timeTaken = data.time_taken_ms ? `<div class="text-xs text-slate-400 mt-2 text-right">Yanıt süresi: ${data.time_taken_ms}ms</div>` : '';
 
@@ -168,9 +194,20 @@
                         sourceHtml += `</div></div>`;
                     }
 
-                    chatBox.innerHTML += `<div class="message bot-msg shadow-sm leading-relaxed">${answerText} ${sourceHtml} ${timeTaken}</div>`;
+                    // Yanıtın altına Resmi Rapor İndir Butonu Ekliyoruz
+                    const reportId = "report_" + Date.now();
+                    window[reportId] = { text: answerText, sources: data.sources || [] };
+
+                    let downloadBtnHtml = `
+                        <div class="mt-3 pt-2 border-t border-slate-200">
+                            <button onclick="downloadReportFromStorage('${reportId}')" class="w-full bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold py-2 px-3 rounded-md transition flex items-center justify-center gap-1 shadow-sm">
+                                📥 Resmi Denetim Raporunu İndir (.md)
+                            </button>
+                        </div>
+                    `;
+
+                    chatBox.innerHTML += `<div class="message bot-msg shadow-sm leading-relaxed">${escapeHtmlForHtml(answerText).replace(/\n/g, '<br>')} ${sourceHtml} ${downloadBtnHtml} ${timeTaken}</div>`;
                 } else {
-                    // DÜZELTİLDİ: Hata mesajı eğer object olarak gelirse (422 Pydantic Hatası gibi), onu düzgün metne çevirir.
                     let errorMsg = data.detail || 'Bilinmeyen hata';
                     if (typeof errorMsg === 'object') {
                         errorMsg = JSON.stringify(errorMsg);
@@ -187,7 +224,14 @@
             }
         }
 
-        // XSS Güvenliği için basit karakter escape fonksiyonu
+        // Global depodan raporu okuyup indiren yardımcı fonksiyon
+        function downloadReportFromStorage(reportId) {
+            const data = window[reportId];
+            if (data) {
+                downloadReport(data.text, data.sources);
+            }
+        }
+
         function escapeHtml(text) {
             const map = {
                 '&': '&amp;',
@@ -197,6 +241,15 @@
                 "'": '&#039;'
             };
             return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        function escapeHtmlForHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
     </script>
 </body>

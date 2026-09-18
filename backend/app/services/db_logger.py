@@ -1,24 +1,34 @@
 # backend/app/services/db_logger.py
-import logging
-from sqlalchemy.orm import Session
-from app.models.models import APILog
 
-logger = logging.getLogger("DB_Logger")
+from datetime import datetime
+from app.configs.database import SessionLocal
+from app.models.models import ChatLog
 
-def log_api_interaction(db: Session, prompt: str, response: str, time_taken_ms: int) -> APILog:
-    """Kullanıcının sorusunu, sistemin cevabını ve geçen süreyi PostgreSQL'e kaydeder."""
+
+def log_to_db_background(
+    request_body: str,
+    response_body: str,
+    duration: float,
+    log_level: str = "INFO"
+) -> None:
+    """
+    Sanal ortamda engellemeyen arka plan görevi (Background Task) olarak çalışıp,
+    istek detaylarını veritabanındaki chat_logs tablosuna kaydeder.
+    Her çağrıda yeni bir izole veritabanı oturumu oluşturur ve kapatır.
+    """
+    db = SessionLocal()
     try:
-        new_log = APILog(
-            prompt=prompt,
-            response=response,
-            time_taken_ms=time_taken_ms
+        chat_log = ChatLog(
+            request_body=request_body,
+            response_body=response_body,
+            duration=duration,
+            log_level=log_level,
+            timestamp=datetime.utcnow()
         )
-        db.add(new_log)
+        db.add(chat_log)
         db.commit()
-        db.refresh(new_log)
-        logger.info(f"Etkileşim veritabanına loglandı [Log ID: {new_log.id}]")
-        return new_log
     except Exception as e:
-        logger.error(f"Veritabanına log yazılırken hata oluştu: {str(e)}")
         db.rollback()
-        raise e
+        print(f"[DB LOGGER ERROR] Failed to save log to database: {e}")
+    finally:
+        db.close()
