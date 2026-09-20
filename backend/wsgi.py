@@ -6,6 +6,13 @@ from starlette.middleware.cors import CORSMiddleware
 from app.routers.v1 import api_router
 from app.configs.database import engine, Base
 
+# --- YENİ EKLENEN İÇE AKTARMALAR ---
+from app.tasks import start_scheduler
+from app.clients.rustfs_client import RustFSClient
+
+
+# -----------------------------------
+
 
 def configure_middlewares(app: FastAPI) -> None:
     """CORS ve diğer middleware'leri yapılandırır."""
@@ -40,6 +47,22 @@ def init_pages(app: FastAPI) -> None:
         return HTMLResponse(content=html_content)
 
 
+# --- YENİ EKLENEN MODÜLER FONKSİYON ---
+def init_startup_events(app: FastAPI) -> None:
+    """Uygulama başlarken çalışacak arka plan görevlerini ve altyapı kontrollerini tanımlar."""
+
+    @app.on_event("startup")
+    def startup_event():
+        # 1. Veri Gölü (Data Lake) kovalarını kontrol et ve eksikleri otomatik aç
+        RustFSClient.initialize_all_buckets()
+
+        # 2. Arka plan yedekleme zamanlayıcısını (Scheduler) başlat
+        start_scheduler()
+
+
+# --------------------------------------
+
+
 def create_app() -> FastAPI:
     """FastAPI uygulama fabrikası (Application Factory)."""
 
@@ -57,6 +80,9 @@ def create_app() -> FastAPI:
     configure_middlewares(app)
     init_routers(app)
     init_pages(app)
+
+    # 4. Başlangıç (Startup) olaylarını yükle
+    init_startup_events(app)  # <-- YENİ EKLENDİ
 
     return app
 

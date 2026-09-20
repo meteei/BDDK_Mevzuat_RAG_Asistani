@@ -9,13 +9,17 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str
 
+    # RustFS (MinIO) Temel Ayarları
     RUSTFS_ENDPOINT: str = "http://localhost:9000"
     RUSTFS_ACCESS_KEY: str = "rustfsadmin"
     RUSTFS_SECRET_KEY: str = "rustfsadmin"
-    RUSTFS_BUCKET_NAME: str = "milvus-data"
 
-    # KRİTİK GÜNCELLEME: Alembic veya FastAPI nereden başlatılırsa başlatılsın
-    # .env dosyasını bulabilmesi için olası tüm yolları (rotaları) ekledik.
+    # KURUMSAL RAG VERİ GÖLÜ (DATA LAKE) KOVALARI
+    RUSTFS_BUCKET_NAME: str = "raw-documents"  # Orijinal PDF'ler
+    RUSTFS_CHUNKS_BUCKET: str = "processed-chunks"  # Vektörleşmeden önceki JSON metinler
+    RUSTFS_REPORTS_BUCKET: str = "generated-reports"  # LLM'in ürettiği indirilebilir raporlar
+    RUSTFS_BACKUPS_BUCKET: str = "system-backups" # Veritabanı ve log otomatik yedekleri
+
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env", "../.env", "../../.env"),
         env_file_encoding="utf-8",

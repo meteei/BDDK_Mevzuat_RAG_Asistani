@@ -8,10 +8,17 @@ from datetime import datetime, timezone
 project_root = str(Path(__file__).resolve().parents[1])
 sys.path.insert(0, project_root)
 
-from backend import get_milvus_client, create_collection_if_not_exists, COLLECTION_NAME
-from backend import SessionLocal
-from backend import UploadedDocument
-from backend import OpenAIClient
+# 1. Vektör Veritabanı İstemcisi
+from app.clients.milvus_client import get_milvus_client, create_collection_if_not_exists, COLLECTION_NAME
+
+# 2. PostgreSQL Veritabanı Oturumu
+from app.configs.database import SessionLocal
+
+# 3. Veritabanı Modelleri
+from app.models.models import UploadedDocument
+
+# 4. Yapay Zeka (OpenAI) İstemcisi
+from app.clients.openai_client import OpenAIClient
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:

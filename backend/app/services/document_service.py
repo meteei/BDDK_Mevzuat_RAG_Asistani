@@ -2,6 +2,7 @@
 
 import os
 import csv
+import json  # <-- EKLENDİ: Data Lake'e JSON kaydetmek için
 import tempfile
 import logging
 import uuid
@@ -17,6 +18,7 @@ from app.clients.milvus_client import get_milvus_client, COLLECTION_NAME
 from app.helpers.text_processor import TextProcessor, text_processor
 from app.clients.openai_client import OpenAIClient
 from app.clients.rustfs_client import RustFSClient
+from app.configs.config import settings  # <-- EKLENDİ: Dinamik bucket isimlerini çekmek için
 
 logger = logging.getLogger("Document_Service")
 
@@ -76,6 +78,8 @@ def delete_document(doc_id: int, db: Session) -> Optional[Dict[str, str]]:
     # 2. RustFS S3 bucket'ından orijinal belge dosyasını temizliyoruz
     try:
         RustFSClient.delete_file(object_name=f"{doc_id}_{filename}")
+        # Not: İstenirse JSON yedekleri (processed-chunks) de buradan silinebilir.
+        # Şimdilik Data Lake mantığında geriye dönük log olarak tutuyoruz.
         logger.info(f"RustFS S3 deposundan dosya silindi: {doc_id}_{filename}")
     except Exception as e:
         logger.warning(f"[RustFS] Belge dosyası silinirken uyarı: {e}")
@@ -115,7 +119,7 @@ def process_upload(filename: str, file_ext: str, file_content: bytes, db: Sessio
 
     temp_path = None
     try:
-        # 1. Orijinal dosyayı DOĞRUDAN RustFS S3 bucket'ına yüklüyoruz
+        # 1. Orijinal dosyayı DOĞRUDAN RustFS S3 bucket'ına (raw-documents) yüklüyoruz
         object_name = f"{db_doc.id}_{filename}"
         rustfs_object = RustFSClient.upload_file(
             file_bytes=file_content,
@@ -142,6 +146,10 @@ def process_upload(filename: str, file_ext: str, file_content: bytes, db: Sessio
 
         if not processed_chunks:
             raise ValueError("Dosyadan anlamlı veya okunabilir metin parçası çıkarılamadı.")
+
+        # --- YENİ EKLENEN KISIM: DATA LAKE JSON YEDEKLEMESİ ---
+        _save_chunks_to_datalake(processed_chunks, filename, db_doc.id)
+        # ------------------------------------------------------
 
         # 3. Milvus'a vektörleştirip yazma
         total_chunks = _embed_and_store(processed_chunks, db_doc)
@@ -171,6 +179,35 @@ def process_upload(filename: str, file_ext: str, file_content: bytes, db: Sessio
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+# --- YENİ EKLENEN YARDIMCI FONKSİYON: JSON YEDEKLEME ---
+
+def _save_chunks_to_datalake(chunks: List[Dict[str, Any]], filename: str, doc_id: int):
+    """
+    Parçalanmış (chunking) metinleri JSON formatında RustFS 'processed-chunks' kovasına yedekler.
+    Bu sayede yeni bir embedding modeline geçiş yapılmak istendiğinde PDF'leri baştan okutmaya gerek kalmaz.
+    """
+    try:
+        # 1. Parçaları JSON formatına (UTF-8) çeviriyoruz
+        json_bytes = json.dumps(chunks, ensure_ascii=False, indent=2).encode("utf-8")
+
+        # 2. Dosya ismini belirliyoruz (Örn: 22_1955.pdf_chunks.json)
+        json_object_name = f"{doc_id}_{filename}_chunks.json"
+
+        # 3. config'den dinamik olarak kova adını çekip yüklüyoruz
+        RustFSClient.upload_file(
+            file_bytes=json_bytes,
+            object_name=json_object_name,
+            bucket_name=getattr(settings, "RUSTFS_CHUNKS_BUCKET", "processed-chunks")
+        )
+        logger.info(f"[RustFS Data Lake] JSON metin parçaları başarıyla yedeklendi: {json_object_name}")
+    except Exception as e:
+        # Bu yedekleme işlemi kritik değil, asıl süreci (Milvus kaydını) durdurmamak için sadece logluyoruz.
+        logger.warning(f"[RustFS Data Lake] JSON yedeklenirken hata oluştu (İşlem devam edecek): {e}")
+
+
+# --------------------------------------------------------
 
 
 # Dosya Türüne Göre Metin Çıkarma (Yardımcı)
@@ -294,7 +331,7 @@ def _embed_and_store(processed_chunks: List[Dict], db_doc: UploadedDocument) -> 
         data = []
         for idx, doc in enumerate(batch):
             data.append({
-                "id": uuid.uuid4().int & ((1 << 63) - 1), # <--- Hatanın çözümü! Milvus'un istediği zorunlu anahtar.
+                "id": uuid.uuid4().int & ((1 << 63) - 1),  # <--- Hatanın çözümü! Milvus'un istediği zorunlu anahtar.
                 "text": doc["text"],
                 "page": doc["page"],
                 "vector": vectors[idx],

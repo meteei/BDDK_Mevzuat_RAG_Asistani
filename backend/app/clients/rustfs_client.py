@@ -11,6 +11,7 @@ from app.configs.config import settings
 
 logger = logging.getLogger("RustFS_Client")
 
+
 class RustFSClient:
     """
     RustFS (MinIO/S3 uyumlu) Nesne Depolama İstemcisi.
@@ -34,6 +35,32 @@ class RustFSClient:
                 region_name="us-east-1"
             )
         return cls._s3_client
+
+    # --- YENİ EKLENEN DİNAMİK KOVA KONTROL FONKSİYONU ---
+    @classmethod
+    def initialize_all_buckets(cls):
+        """
+        Sistem ayağa kalktığında config.py içindeki adında 'BUCKET' geçen
+        tüm ayarları dinamik olarak tarar ve eksik kovaları otomatik oluşturur.
+        """
+        # settings içindeki tüm değişkenleri tara, adında BUCKET geçenlerin değerini al
+        buckets_to_check = [
+            value for key, value in settings.__dict__.items()
+            if "BUCKET" in key and isinstance(value, str)
+        ]
+
+        s3 = cls.get_client()
+        for bucket in buckets_to_check:
+            try:
+                s3.head_bucket(Bucket=bucket)
+            except ClientError:
+                try:
+                    s3.create_bucket(Bucket=bucket)
+                    logger.info(f"[RustFS Data Lake] Yeni kova oluşturuldu: {bucket}")
+                except Exception as e:
+                    logger.error(f"[RustFS Error] {bucket} oluşturulurken hata: {e}")
+
+    # ----------------------------------------------------
 
     @classmethod
     def ensure_bucket_exists(cls, bucket_name: str = None) -> str:

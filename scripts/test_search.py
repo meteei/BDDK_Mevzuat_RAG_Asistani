@@ -7,9 +7,12 @@ from pathlib import Path
 backend_path = str(Path(__file__).resolve().parents[1] / "backend")
 sys.path.insert(0, backend_path)
 
-from backend import settings
-from backend import get_milvus_client, COLLECTION_NAME
-from backend import OpenAIClient
+# 1. Uygulama Ayarları
+from app.configs.config import settings
+# 2. Vektör Veritabanı İstemcisi ve Koleksiyon Adı
+from app.clients.milvus_client import get_milvus_client, COLLECTION_NAME
+# 3. Yapay Zeka (OpenAI) İstemcisi
+from app.clients.openai_client import OpenAIClient
 
 
 def run_test_search():
