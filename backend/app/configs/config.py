@@ -2,17 +2,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    POSTGRES_URL: str = "postgresql://admin:adminpassword@localhost:5432/rag_logs"
+    # Hassas bilgiler: Değer atamıyoruz, .env'den gelmesi zorunlu
+    POSTGRES_URL: str
+    OPENAI_API_KEY: str
+    RUSTFS_ACCESS_KEY: str
+    RUSTFS_SECRET_KEY: str
 
+    # Sistem/Port ayarları: Bunlar varsayılan olarak kalabilir
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
-
-    OPENAI_API_KEY: str
-
-    # RustFS (MinIO) Temel Ayarları
     RUSTFS_ENDPOINT: str = "http://localhost:9000"
-    RUSTFS_ACCESS_KEY: str = "rustfsadmin"
-    RUSTFS_SECRET_KEY: str = "rustfsadmin"
 
     # KURUMSAL RAG VERİ GÖLÜ (DATA LAKE) KOVALARI
     RUSTFS_BUCKET_NAME: str = "raw-documents"  # Orijinal PDF'ler
@@ -25,6 +24,5 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
-
 
 settings = Settings()
