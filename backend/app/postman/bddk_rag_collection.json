@@ -6,7 +6,7 @@
     },
     "item": [
         {
-            "name": "1. Soru Sor (/api/ask)",
+            "name": "1. Soru Sor (/api/chat/chat)",
             "request": {
                 "method": "POST",
                 "header": [
@@ -17,19 +17,19 @@
                 ],
                 "body": {
                     "mode": "raw",
-                    "raw": "{\n    \"query\": \"Birincil ve ikincil sistemler nerede bulundurulmalıdır?\",\n    \"session_id\": \"stajyer_test_01\"\n}"
+                    "raw": "{\n    \"message\": \"Birincil sistemlerin yedekleri ikincil sistem sayılır mı?\",\n    \"session_id\": \"test_01\"\n}"
                 },
                 "url": {
-                    "raw": "http://127.0.0.1:8002/api/ask",
+                    "raw": "http://127.0.0.1:8000/api/chat/chat",
                     "protocol": "http",
                     "host": ["127", "0", "0", "1"],
-                    "port": "8002",
-                    "path": ["api", "ask"]
+                    "port": "8000",
+                    "path": ["api", "chat", "chat"]
                 }
             }
         },
         {
-            "name": "2. Dinamik Belge Yükle (/api/upload)",
+            "name": "2. Dinamik Belge Yükle (/api/documents/upload)",
             "request": {
                 "method": "POST",
                 "header": [],
@@ -44,25 +44,25 @@
                     ]
                 },
                 "url": {
-                    "raw": "http://127.0.0.1:8002/api/upload",
+                    "raw": "http://127.0.0.1:8000/api/documents/upload",
                     "protocol": "http",
                     "host": ["127", "0", "0", "1"],
-                    "port": "8002",
-                    "path": ["api", "upload"]
+                    "port": "8000",
+                    "path": ["api", "documents", "upload"]
                 }
             }
         },
         {
-            "name": "3. Geçmiş Logları Getir (/api/logs)",
+            "name": "3. Geçmiş Logları Getir (/api/chat/logs)",
             "request": {
                 "method": "GET",
                 "header": [],
                 "url": {
-                    "raw": "http://127.0.0.1:8002/api/logs?limit=10&skip=0",
+                    "raw": "http://127.0.0.1:8000/api/chat/logs?limit=10&skip=0",
                     "protocol": "http",
                     "host": ["127", "0", "0", "1"],
-                    "port": "8002",
-                    "path": ["api", "logs"],
+                    "port": "8000",
+                    "path": ["api", "chat", "logs"],
                     "query": [
                         {
                             "key": "limit",
@@ -77,16 +77,16 @@
             }
         },
         {
-            "name": "4. Geri Bildirim Güncelle (/api/logs/{log_id})",
+            "name": "4. Geri Bildirim Güncelle (/api/chat/logs/{log_id})",
             "request": {
                 "method": "PUT",
                 "header": [],
                 "url": {
-                    "raw": "http://127.0.0.1:8002/api/logs/1?is_helpful=true",
+                    "raw": "http://127.0.0.1:8000/api/chat/logs/1?is_helpful=true",
                     "protocol": "http",
                     "host": ["127", "0", "0", "1"],
-                    "port": "8002",
-                    "path": ["api", "logs", "1"],
+                    "port": "8000",
+                    "path": ["api", "chat", "logs", "1"],
                     "query": [
                         {
                             "key": "is_helpful",
@@ -97,16 +97,16 @@
             }
         },
         {
-            "name": "5. Log Sil (/api/logs/{log_id})",
+            "name": "5. Log Sil (/api/chat/logs/{log_id})",
             "request": {
                 "method": "DELETE",
                 "header": [],
                 "url": {
-                    "raw": "http://127.0.0.1:8002/api/logs/1",
+                    "raw": "http://127.0.0.1:8000/api/chat/logs/1",
                     "protocol": "http",
                     "host": ["127", "0", "0", "1"],
-                    "port": "8002",
-                    "path": ["api", "logs", "1"]
+                    "port": "8000",
+                    "path": ["api", "chat", "logs", "1"]
                 }
             }
         },
@@ -116,10 +116,10 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                    "raw": "http://127.0.0.1:8002/api/documents",
+                    "raw": "http://127.0.0.1:8000/api/documents",
                     "protocol": "http",
                     "host": ["127", "0", "0", "1"],
-                    "port": "8002",
+                    "port": "8000",
                     "path": ["api", "documents"]
                 }
             }
