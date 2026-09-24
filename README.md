@@ -6,31 +6,32 @@ Kullanıcıların karmaşık bankacılık regülasyonları üzerinden sorular so
 
 ---
 
-## Belge Kaynağı
+## 📑 Belge Kaynağı
 Sistem, arayüz üzerinden dinamik olarak yüklenen PDF belgeleriyle çalışır. Varsayılan senaryoda aşağıdaki belge türleri hedeflenmiştir:
 * **Dosya Tipi:** BDDK Yönetmelikleri (Örn: `Bankaların Bilgi Sistemleri ve Elektronik Bankacılık Hizmetleri Hakkında Yönetmelik` veya `GeneratePdf.pdf`)
 * Yüklenen belgeler otomatik olarak parçalanır, meta verileri temizlenir ve Milvus vektör veritabanına indekslenir.
 
 ---
 
-## Genel Bakış
+## 🚀 Genel Bakış
 
-Bu proje, uçtan uca entegre kurumsal bir RAG platformudur. Tüm soru-cevap trafiği, API performans metrikleri (istek süresi, kaynaklar) ve sistem logları asenkron olarak ilişkisel veritabanında saklanır. Sistem; katı şema uyumlu Milvus entegrasyonu, dinamik PDF yükleme, Docker tabanlı yönetim panelleri (**Attu** ve **RustFS**) ve modern, duyarlı (responsive) Tailwind CSS web arayüzü ile kesintisiz bir yapay zeka deneyimi sunar.
+Bu proje, uçtan uca entegre kurumsal bir RAG platformudur. Tüm soru-cevap trafiği, API performans metrikleri (istek süresi, kaynaklar) ve sistem logları asenkron olarak ilişkisel veritabanında saklanır. Sistem; katı şema uyumlu Milvus entegrasyonu, dinamik PDF yükleme, Docker tabanlı yönetim panelleri (**Attu** ve **RustFS**), otomatik veri gölü (Data Lake) yedekleme mekanizması ve modern, duyarlı (responsive) Tailwind CSS web arayüzü ile kesintisiz bir yapay zeka deneyimi sunar.
 
 ### Temel Teknolojiler ve Mimari
 
 1. **FastAPI**: API istekleri ve arayüz sunumu (Jinja2 Templates) için asenkron, yüksek performanslı backend katmanı.
 2. **OpenAI (GPT-4o & text-embedding-3-small)**: Metinlerin anlamsal vektörlerini (embedding) üretmek ve kaynak atıflı, mevzuata dayalı doğal dil yanıtları oluşturmak için kullanılır.
 3. **Milvus (v2.4.0)**: Mevzuat maddeleri arasında milisaniyeler düzeyinde benzerlik araması yapmak için kullanılan HNSW indeksli vektör veri tabanı. Veri bütünlüğü için katı şema (`strict schema`) uygulanır.
-4. **RustFS (MinIO Altyapısı)**: Milvus vektör depolaması ve harici sistem yedekleri için kullanılan yüksek performanslı, S3 uyumlu nesne depolama motoru. 
-5. **Attu**: Milvus veritabanı koleksiyonlarını, varlıklarını (entities) ve sağlık durumunu görsel olarak izlemek ve yönetmek için kullanılan resmi web arayüzü.
-6. **SQLAlchemy & Alembic**: PostgreSQL veritabanı ORM modellerini yönetir ve veritabanı şema geçişlerini (migrations) takip eder.
-7. **PostgreSQL (Docker)**: Kullanıcı sorgularını, asistan yanıtlarını, işlem sürelerini ve geri bildirim loglarını kaydeder.
-8. **Tailwind CSS & HTML5**: Enterprise düzeyinde, modern ve asenkron çalışan web paneli (FastAPI üzerinden doğrudan sunulur).
+4. **RustFS (MinIO Altyapısı)**: Milvus vektör depolaması ve sistem loglarının JSON formatında Data Lake olarak yedeklenmesi için kullanılan yüksek performanslı, S3 uyumlu nesne depolama motoru. 
+5. **APScheduler**: Arka planda çalışan kurumsal zamanlanmış görev (cron job) yöneticisi.
+6. **Attu**: Milvus veritabanı koleksiyonlarını, varlıklarını (entities) ve sağlık durumunu görsel olarak izlemek ve yönetmek için kullanılan resmi web arayüzü.
+7. **SQLAlchemy & Alembic**: PostgreSQL veritabanı ORM modellerini yönetir ve veritabanı şema geçişlerini (migrations) takip eder.
+8. **PostgreSQL (Docker)**: Kullanıcı sorgularını, asistan yanıtlarını, işlem sürelerini ve geri bildirim loglarını kaydeder.
+9. **Tailwind CSS & HTML5**: Enterprise düzeyinde, modern ve asenkron çalışan web paneli (FastAPI üzerinden doğrudan sunulur).
 
 ---
 
-## Özellikler
+## ✨ Özellikler
 
 1. **Clean Architecture & App Factory Mimarisi**:
    - Proje bağımlılıkları ve uygulama başlatma mantığı tamamen izole edilmiştir.
@@ -40,10 +41,11 @@ Bu proje, uçtan uca entegre kurumsal bir RAG platformudur. Tüm soru-cevap traf
 4. **Ölçeklenebilir Vektör Altyapısı**: Milvus ve Cosine metriği ile yüksek performanslı anlamsal aramalar gerçekleştirilir.
 5. **Kaynak Gösterimli (Atıflı) Yanıt Üretimi**: OpenAI, Milvus'tan gelen en ilgili metin parçalarını alıp, hangi belgeden ve maddeden alındığını belirterek profesyonel denetçi formatında cevap üretir.
 6. **Asenkron Arka Plan Görevleri (Background Tasks)**: Veritabanı loglama ve metrik kayıt işlemleri, kullanıcıya yanıt dönüldükten sonra asenkron olarak arka planda yürütülür, API yanıt süresi sıfır gecikmeyle çalışır.
+7. **Otomatik Veri Gölü (Data Lake) Yedeklemesi**: `APScheduler` kullanılarak PostgreSQL üzerindeki tüm operasyonel loglar ve sistem kayıtları 12 saatte bir otomatik olarak JSON formatına dönüştürülüp RustFS üzerindeki `system-backups` kovasına yedeklenir.
 
 ---
 
-## Mimarisi ve İstek Akışı
+## 🔄 Mimarisi ve İstek Akışı
 
 1. **Belge Yükleme (Upload/Ingestion)**: Kullanıcı web arayüzünden PDF yükler.
 2. **Metin İşleme ve Filtreleme**: `document_service.py` ve `text_processor.py` devreye girer; PDF'i okur, parçalar (chunks) ve Milvus şemasına uymayan tüm ham meta verileri temizler.
@@ -51,9 +53,11 @@ Bu proje, uçtan uca entegre kurumsal bir RAG platformudur. Tüm soru-cevap traf
 4. **Vektör Kaydı**: Parçalar `kaynak` ve `madde_no` verileriyle birlikte `milvus_client.py` aracılığıyla veritabanına yazılır.
 5. **RAG Arama**: Kullanıcı sorusunu yazar. Milvus üzerinde Semantic Search yapılarak en benzer mevzuat maddeleri çekilir.
 6. **Yanıt Üretimi**: Alınan mevzuat maddeleri LLM'e iletilir. Atıflı yanıt üretilir, `db_logger.py` ile yanıt süresi ve metrikler PostgreSQL'e kaydedilir.
+7. **Sistem Yedekleme Döngüsü**: Arka planda çalışan `tasks.py`, periyodik olarak PostgreSQL veritabanını tarar ve güvenli arşivleme için RustFS'e gönderir.
 
 ---
-## Proje Klasör Yapısı
+
+## 📁 Proje Klasör Yapısı
 
 ```text
 PythonProjectRegulasyon_RAG/
@@ -100,8 +104,7 @@ PythonProjectRegulasyon_RAG/
 │       │   ├── db_logger.py
 │       │   ├── document_service.py
 │       │   └── memory.py
-│       ├── templates/                   # Frontend HTML/Tailwind şablonları
-│       │   └── index.html
+│       ├── tasks.py                     # APScheduler ile otomatik görevler (Yedekleme vb.)
 │       ├── .env                         # Backend ortam değişkenleri
 │       ├── __init__.py
 │       ├── main.py                      # FastAPI ana sunucu başlatıcı (App Factory)
@@ -120,12 +123,15 @@ PythonProjectRegulasyon_RAG/
 └── requirements.txt                     # Python kütüphane bağımlılıkları
 ```
 
-## Kurulum ve Başlatma
+---
+
+## 🛠 Kurulum ve Başlatma
 
 ### Ön Koşullar
 
-- **Python 3.9+** (Önerilen: 3.14)
+- **Python 3.9+**
 - **Docker ve Docker Compose** (PostgreSQL, Milvus, RustFS ve Attu için)
+- **DBeaver** (Önerilen) - PostgreSQL veritabanını ve JSON log kayıtlarını görsel olarak incelemek için.
 
 ### Adım Adım Kurulum
 
@@ -155,15 +161,15 @@ alembic upgrade head
 ```
 
 **5. Servisleri Çalıştırın**
-FastAPI sunucusunu başlatın (Web arayüzü de bu sunucu üzerinden servis edilecektir):
-
+FastAPI sunucusunu başlatın (Web arayüzü ve APScheduler görevleri de bu sunucu ile entegre çalışacaktır):
+```bash
 cd backend
-python wsgi.py
-# veya uvicorn app.main:app --reload
+python main.py
+```
 
 ---
 
-## API Uç Noktaları (Endpoints) ve Örnekler
+## 🔌 API Uç Noktaları (Endpoints) ve Örnekler
 
 | Yöntem | Rota | Açıklama | Router / Service |
 |---|---|---|---|
@@ -175,12 +181,12 @@ python wsgi.py
 
 ### Örnek İstek ve Yanıtlar
 
-#### 1. Sohbet API Ucu (`POST /api/v1/chat`)
+#### Sohbet API Ucu (`POST /api/v1/chat`)
 
 **İstek Gövdesi:**
 ```json
 {
-  "query": "Bankaların asgari sermaye yeterlilik oranı nedir?",
+  "query": "Kritik müşteri verileri yurt dışı bulut sistemlerinde saklanabilir mi?",
   "session_id": "denetci_test_01"
 }
 ```
@@ -189,11 +195,12 @@ python wsgi.py
 ```json
 {
   "log_id": 42,
-  "query": "Bankaların asgari sermaye yeterlilik oranı nedir?",
-  "answer": "BDDK mevzuatına göre bankaların sermaye yeterliliği standart oranı yasal sınır olarak en az %8'dir.",
+  "query": "Kritik müşteri verileri yurt dışı bulut sistemlerinde saklanabilir mi?",
+  "answer": "Bankaların Bilgi Sistemleri ve Elektronik Bankacılık Hizmetleri Hakkında Yönetmelik ve KVKK hükümleri uyarınca kritik verilerin yurt dışına aktarılabilmesi için, ilgili ülkenin yeterli koruma düzeyine sahip olması veya veri sahibinin açık rızasının alınması gerekmektedir.",
   "time_taken_ms": 845,
   "sources": [
-    "Bankaların Sermaye Yeterliliğinin Ölçülmesine İlişkin Yönetmelik - Madde 4"
+    "GeneratePdf.pdf - Madde 10",
+    "GeneratePdf.pdf - Madde 29"
   ],
   "session_id": "denetci_test_01"
 }
@@ -201,14 +208,15 @@ python wsgi.py
 
 ---
 
-## Görsel İnceleme ve Yönetim Araçları
+## 🖥 Görsel İnceleme ve Yönetim Araçları
 
 | Araç | URL / Erişim | Açıklama |
 |---|---|---|
-| **Web Denetim Paneli & UI** | `http://localhost:8000` | Tailwind CSS tabanlı RAG denetim ve mevzuat sorgulama arayüzü |
-| **FastAPI Swagger Docs** | `http://localhost:8000/docs` | İnteraktif API dokümantasyonu ve uç nokta test arayüzü |
-| **Milvus Yönetim Arayüzü (Attu)** | `http://localhost:3000` | Vektör koleksiyonları, entity sayıları ve arama analiz paneli |
-| **Nesne Depolama Konsolu (RustFS)** | `http://localhost:9001` | S3 uyumlu depolama ve kova (bucket) yönetimi (`rustfsadmin` / `rustfsadmin`) |
+| **Web Denetim Paneli & UI** | `http://localhost:8000` | Tailwind CSS tabanlı RAG denetim ve mevzuat sorgulama arayüzü. |
+| **FastAPI Swagger Docs** | `http://localhost:8000/docs` | İnteraktif API dokümantasyonu ve uç nokta test arayüzü. |
+| **Milvus Yönetim Arayüzü (Attu)** | `http://localhost:8001` | Vektör koleksiyonları, entity sayıları ve arama analiz paneli. |
+| **Nesne Depolama Konsolu (RustFS)** | `http://localhost:9001` | S3 uyumlu Data Lake arayüzü. 12 saatte bir `system-backups` kovasına alınan otomatik JSON yedekleri buradan izlenebilir. (`rustfsadmin` / `rustfsadmin`) |
+| **DBeaver (Veritabanı Yönetimi)** | `localhost:5432` | PostgreSQL (`rag_logs` db) tablolarını (ör. `chat_logs` ve `uploaded_documents`) görsel olarak sorgulamak, Record View ve JSON Viewer ile logları profesyonel şekilde incelemek için önerilen araçtır. |
 
 ---
 *Geliştirici:* Ahmet Mete Işık
