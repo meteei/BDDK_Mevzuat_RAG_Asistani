@@ -28,7 +28,7 @@ def get_rendered_prompt(context: str, question: str) -> str:
 
 
 # Benzer Chunk Arama (Milvus)
-def search_similar_chunks(query: str, limit: int = 10) -> Optional[List[str]]:
+def search_similar_chunks(query: str, limit: int = 7) -> Optional[List[str]]:
     """
     Kullanıcının sorusunu embed edip Milvus üzerinde anlamsal benzerlik araması yapar.
     En benzer chunk'ları kaynak bilgileriyle birlikte döner.

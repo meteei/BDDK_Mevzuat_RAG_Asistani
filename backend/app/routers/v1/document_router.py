@@ -49,8 +49,8 @@ def remove_document(doc_id: int, db: Session = Depends(get_db)):
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
     Yüklenen PDF, DOCX, CSV ve TXT dosyalarını kabul eder,
-    metinlerini çıkarıp Chonkie ile parçalar, Azure OpenAI ile embed eder ve Milvus'a yazar.
-    Dosya durumunu veritabanı (MSSQL) üzerinden takip eder.
+    metinlerini çıkarıp TextProcessor (Regex) ile parçalar, OpenAI ile embed eder ve Milvus'a yazar.
+    Dosya durumunu veritabanı (PostgreSQL) üzerinden takip eder.
     """
     file_ext = os.path.splitext(file.filename)[1].lower()
 

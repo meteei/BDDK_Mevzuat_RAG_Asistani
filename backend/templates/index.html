@@ -82,7 +82,7 @@
             statusText.className = "text-sm mt-3 font-medium text-blue-500";
 
             try {
-                // Yükleme uç noktası, FastAPI projenle uyumlu olacak şekilde:
+                // Yükleme uç noktası
                 const response = await fetch('/api/documents/upload', {
                     method: 'POST',
                     body: formData
@@ -148,6 +148,41 @@
             URL.revokeObjectURL(url);
         }
 
+        // --- GÜNCELLENEN: Geri Bildirim Fonksiyonu (Artık sessionId kullanıyor) ---
+        async function sendFeedback(currentSessionId, isHelpful, btnElement) {
+            const parentDiv = btnElement.parentElement;
+
+            if (!currentSessionId) {
+                parentDiv.innerHTML = "<span class='text-orange-500 text-xs'>Oturum kimliği bulunamadı.</span>";
+                return;
+            }
+
+            // Arayüzde bekleme efekti
+            parentDiv.innerHTML = "<span class='text-slate-400 text-xs italic'>Kaydediliyor...</span>";
+
+            try {
+                // Backend'deki chat_router.py içerisindeki yeni session_id'li PUT endpoint'ine istek atıyoruz
+                const response = await fetch(`/api/chat/logs/feedback/${currentSessionId}?is_helpful=${isHelpful}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    // İşlem başarılı olursa görsel olarak kullanıcıyı bilgilendir
+                    if (isHelpful) {
+                        parentDiv.innerHTML = "<span class='text-green-600 text-xs font-semibold'>✅ Yanıtı faydalı buldunuz. Geri bildiriminiz için teşekkürler!</span>";
+                    } else {
+                        parentDiv.innerHTML = "<span class='text-red-500 text-xs font-semibold'>❌ Yanıtı faydasız buldunuz. Sistemin gelişimi için kaydedildi.</span>";
+                    }
+                } else {
+                    parentDiv.innerHTML = "<span class='text-orange-500 text-xs'>Kayıt başarısız oldu.</span>";
+                }
+            } catch (error) {
+                console.error("Geri bildirim gönderilemedi:", error);
+                parentDiv.innerHTML = "<span class='text-orange-500 text-xs'>Bağlantı hatası.</span>";
+            }
+        }
+
         async function askQuestion() {
             const input = document.getElementById('userInput');
             const query = input.value.trim();
@@ -171,7 +206,6 @@
                 const response = await fetch('/api/chat/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    // DÜZELTME: Backend'in beklediği "message" parametresi olarak güncellendi.
                     body: JSON.stringify({ message: query, session_id: sessionId })
                 });
 
@@ -179,12 +213,14 @@
                 document.getElementById(loadingId).remove();
 
                 if (response.ok) {
-                    // Backend "response" dönüyor, arayüz hem "answer" hem "response" okuyacak şekilde uyarlandı
                     let answerText = data.answer || data.response || "Yanıt alınamadı.";
                     let timeTaken = data.time_taken_ms ? `<div class="text-xs text-slate-400 mt-2 text-right">Yanıt süresi: ${data.time_taken_ms}ms</div>` : '';
 
+                    // DÜZELTME 1: "Bilgi bulunmuyor" diyorsa kaynakları ekrana basma (Anti-Gürültü)
+                    let isNoInfo = answerText.toLowerCase().includes("bilgi bulunmuyor") || answerText.toLowerCase().includes("mevzuatta bulunmamaktadır");
                     let sourceHtml = "";
-                    if (data.sources && data.sources.length > 0) {
+
+                    if (data.sources && data.sources.length > 0 && !isNoInfo) {
                         sourceHtml = `<div class="mt-3 border-t border-slate-200 pt-2"><span class="text-xs font-bold text-slate-500 mb-1 block">Dayanılan Mevzuat Kaynakları:</span><div class="flex flex-wrap gap-1">`;
                         data.sources.forEach((src, idx) => {
                             let cleanSrc = escapeHtml(src);
@@ -194,9 +230,8 @@
                         sourceHtml += `</div></div>`;
                     }
 
-                    // Yanıtın altına Resmi Rapor İndir Butonu Ekliyoruz
                     const reportId = "report_" + Date.now();
-                    window[reportId] = { text: answerText, sources: data.sources || [] };
+                    window[reportId] = { text: answerText, sources: (!isNoInfo ? data.sources : []) || [] };
 
                     let downloadBtnHtml = `
                         <div class="mt-3 pt-2 border-t border-slate-200">
@@ -206,7 +241,21 @@
                         </div>
                     `;
 
-                    chatBox.innerHTML += `<div class="message bot-msg shadow-sm leading-relaxed">${escapeHtmlForHtml(answerText).replace(/\n/g, '<br>')} ${sourceHtml} ${downloadBtnHtml} ${timeTaken}</div>`;
+                    // DÜZELTME 2: Butonlar logId yerine doğrudan global sessionId değerini gönderiyor
+                    let feedbackHtml = `
+                        <div class="mt-3 pt-2 border-t border-slate-200 flex gap-4">
+                            <span class="text-xs text-slate-500 pt-1">Bu yanıt faydalı mıydı?</span>
+                            <button onclick="sendFeedback('${sessionId}', true, this)" class="text-xs font-medium text-slate-500 hover:text-green-600 transition-colors flex items-center gap-1 bg-slate-100 hover:bg-green-50 px-2 py-1 rounded">
+                                👍 Evet
+                            </button>
+                            <button onclick="sendFeedback('${sessionId}', false, this)" class="text-xs font-medium text-slate-500 hover:text-red-600 transition-colors flex items-center gap-1 bg-slate-100 hover:bg-red-50 px-2 py-1 rounded">
+                                👎 Hayır
+                            </button>
+                        </div>
+                    `;
+
+                    // Mesaj balonuna feedbackHtml'i de dahil ediyoruz
+                    chatBox.innerHTML += `<div class="message bot-msg shadow-sm leading-relaxed">${escapeHtmlForHtml(answerText).replace(/\n/g, '<br>')} ${sourceHtml} ${downloadBtnHtml} ${feedbackHtml} ${timeTaken}</div>`;
                 } else {
                     let errorMsg = data.detail || 'Bilinmeyen hata';
                     if (typeof errorMsg === 'object') {

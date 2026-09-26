@@ -213,29 +213,69 @@ def _save_chunks_to_datalake(chunks: List[Dict[str, Any]], filename: str, doc_id
 # Dosya Türüne Göre Metin Çıkarma (Yardımcı)
 
 def _extract_pdf_chunks(temp_path: str) -> List[Dict[str, Any]]:
-    """PDF dosyasından hiyerarşik başlık algılama (Madde bazlı) ile metin çıkarır."""
+    """PDF dosyasından hiyerarşik başlık algılama (Madde bazlı) ve uzun maddeler için akıllı alt parçalama uygular."""
     chunks = []
+    from pypdf import PdfReader
     reader = PdfReader(temp_path)
 
-    for idx, page in enumerate(reader.pages):
-        page_text = page.extract_text() or ""
+    # 1. Sayfa sonu kopmalarını engellemek için tüm metni birleştir
+    full_text = ""
+    for page in reader.pages:
+        full_text += (page.extract_text() or "") + "\n\n"
 
-        # Metni doğrudan 'Madde' yapılarına göre anlamsal olarak parçalıyoruz
-        sections = TextProcessor.split_by_madde(page_text, "Yuklenen_Belge")
+    # 2. Senin kusursuz Madde ayırıcınla ana blokları bul
+    sections = TextProcessor.split_by_madde(full_text, "Yuklenen_Belge")
 
-        for doc in sections:
-            section_content = doc.page_content.strip()
+    for doc in sections:
+        section_content = doc.page_content.strip()
+        if not section_content:
+            continue
 
-            # Eğer içerik boşsa atla
-            if not section_content:
-                continue
+        madde_no = doc.metadata.get("madde_no", "Genel_Hukum")
+        page_val = madde_no if str(madde_no).isdigit() else 0
+        kaynak_val = doc.metadata.get("kaynak", "Yuklenen_Belge")
 
-            # Parçayı doğrudan Milvus formatına uygun olarak listeye ekle
+        # 3. YENİ ve %100 GÜVENLİ: Basit Paragraf (Fıkra) Bölücü
+        # Eğer madde 1000 karakterden (yaklaşık 150 kelime) uzunsa, alt parçalara (fıkralara) ayır
+        if len(section_content) > 1000:
+            paragraphs = section_content.split('\n')
+            current_chunk = ""
+
+            for p in paragraphs:
+                p = p.strip()
+                if not p:
+                    continue
+
+                # Eğer mevcut parça ve yeni eklenen paragraf 1000 karakteri aşıyorsa, mevcut parçayı listeye ekle
+                if len(current_chunk) + len(p) > 1000 and current_chunk:
+                    # Yapay zeka bağlamı kaybetmesin diye başına Madde Numarasını ekliyoruz
+                    context_prefix = f"[MADDE {madde_no} - Devamı]\n"
+                    chunks.append({
+                        "text": context_prefix + current_chunk.strip(),
+                        "page": page_val,
+                        "madde_no": madde_no,
+                        "kaynak": kaynak_val
+                    })
+                    current_chunk = p  # Yeni parçaya geç
+                else:
+                    current_chunk += "\n" + p if current_chunk else p
+
+            # Kalan son parçayı (fıkraları) listeye ekle
+            if current_chunk:
+                context_prefix = f"[MADDE {madde_no} - Devamı]\n"
+                chunks.append({
+                    "text": context_prefix + current_chunk.strip(),
+                    "page": page_val,
+                    "madde_no": madde_no,
+                    "kaynak": kaynak_val
+                })
+        else:
+            # Madde kısaysa bölmeye gerek yok, doğrudan ekle
             chunks.append({
                 "text": section_content,
-                "page": idx + 1,
-                "madde_no": doc.metadata.get("madde_no", "Genel_Hukum"),
-                "kaynak": doc.metadata.get("kaynak", "Yuklenen_Belge")
+                "page": page_val,
+                "madde_no": madde_no,
+                "kaynak": kaynak_val
             })
 
     return chunks

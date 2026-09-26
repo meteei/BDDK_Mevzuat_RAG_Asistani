@@ -109,25 +109,29 @@ async def get_logs(limit: int = 10, skip: int = 0, db: Session = Depends(get_db)
         raise HTTPException(status_code=500, detail=f"Loglar çekilirken hata oluştu: {str(e)}")
 
 
-@router.put("/logs/{log_id}", summary="Kullanıcı geri bildirimini günceller")
-async def update_feedback(log_id: int, is_helpful: bool, db: Session = Depends(get_db)):
+@router.put("/logs/feedback/{session_id}", summary="Kullanıcı geri bildirimini oturum kimliği ile günceller")
+async def update_feedback_by_session(session_id: str, is_helpful: bool, db: Session = Depends(get_db)):
     """
-    Kullanıcının RAG yanıtını faydalı bulup bulmadığını (RLHF için)
-    ilgili log kaydına işler (is_helpful: true/false).
+    Kullanıcının RAG yanıtını faydalı bulup bulmadığını, oturumdaki
+    EN SON log kaydını bularak işler.
     """
     try:
-        log = db.query(ChatLog).filter(ChatLog.id == log_id).first()
+        # YAPIYI BOZMADAN ZEKİCE ÇÖZÜM:
+        # session_id sütunu olmadığı için, oturum kimliğini 'request_body' içindeki metinde arıyoruz!
+        log = db.query(ChatLog).filter(
+            ChatLog.request_body.like(f"%{session_id}%")
+        ).order_by(ChatLog.id.desc()).first()
 
         if not log:
-            raise HTTPException(status_code=404, detail=f"{log_id} numaralı log bulunamadı.")
+            raise HTTPException(status_code=404, detail="Bu oturuma ait log henüz hazır değil veya bulunamadı.")
 
-        # Veritabanındaki satırı güncelliyoruz
+        # Geri bildirimi kaydet
         log.is_helpful = is_helpful
         db.commit()
 
         return {
             "message": "Geri bildirim başarıyla kaydedildi.",
-            "log_id": log_id,
+            "session_id": session_id,
             "is_helpful": is_helpful
         }
     except HTTPException:
@@ -135,6 +139,7 @@ async def update_feedback(log_id: int, is_helpful: bool, db: Session = Depends(g
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Geri bildirim güncellenirken hata oluştu: {str(e)}")
+
 
 @router.delete("/logs/{log_id}", summary="Belirtilen sohbet logunu siler")
 async def delete_log(log_id: int, db: Session = Depends(get_db)):
