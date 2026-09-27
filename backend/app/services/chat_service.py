@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, List, Optional
 from uuid import uuid4
+import re
 from datetime import datetime  # <-- EKLENDİ: Raporlara tarih damgası vurmak için
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -56,7 +57,22 @@ def search_similar_chunks(query: str, limit: int = 7) -> Optional[List[str]]:
             text = entity.get("text", "")
             page = entity.get("page", "Bilinmiyor")
             filename = entity.get("filename", "Bilinmeyen Belge")
-            context_parts.append(f"[Kaynak #{idx + 1} - Belge: {filename}, Sayfa: {page}]: {text}")
+
+            # ========================================================
+            # YENİ EKLENEN KISIM: LLM için Regex ile Madde Tespiti
+            # ========================================================
+            madde_match = re.search(r"MADDE\s+(\d+)", text, re.IGNORECASE)
+
+            if madde_match:
+                # Metinde Madde kelimesi geçiyorsa etiketi Madde X yap
+                kaynak_etiketi = f"Madde: {madde_match.group(1)}"
+            else:
+                # Bulamazsa senin orijinal kodundaki gibi Sayfa X yap
+                kaynak_etiketi = f"Sayfa: {page}"
+            # ========================================================
+
+            # Mevcut append yapını bozmadan kaynak etiketini dinamik hale getirdik
+            context_parts.append(f"[Kaynak #{idx + 1} - Belge: {filename}, {kaynak_etiketi}]: {text}")
 
     return context_parts
 

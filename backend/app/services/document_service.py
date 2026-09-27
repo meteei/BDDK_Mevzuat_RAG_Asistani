@@ -97,6 +97,10 @@ def delete_document(doc_id: int, db: Session) -> Optional[Dict[str, str]]:
 
 # 3. Belge Yükleme ve İşleme (POST /upload)
 
+# Gerekli importları dosyanın en üstüne eklemeyi unutma (Zaten varsa ekleme)
+# from src.milvus_client import get_milvus_client  # Senin projendeki yola göre düzelt
+# from src.config import COLLECTION_NAME # Veya koleksiyon adını string olarak yazabilirsin
+
 def process_upload(filename: str, file_ext: str, file_content: bytes, db: Session) -> Dict[str, Any]:
     """
     Yüklenen dosyayı işler: orijinal dosyayı doğrudan RustFS S3 bucket'ına yükler,
@@ -151,7 +155,22 @@ def process_upload(filename: str, file_ext: str, file_content: bytes, db: Sessio
         _save_chunks_to_datalake(processed_chunks, filename, db_doc.id)
         # ------------------------------------------------------
 
+        # =========================================================================
+        # YENİ EKLENEN KISIM: ESKİ HAFIZAYI (MİLVUS) TAMAMEN TEMİZLEME
+        # =========================================================================
+        client = get_milvus_client()  # Senin milvus dosyasındaki client fonksiyonun
+        # COLLECTION_NAME yerine projendeki koleksiyon adını yaz (Örn: "bddk_regulations")
+        collection_adi = "bddk_regulations"
+
+        if client.has_collection(collection_adi):
+            client.drop_collection(collection_adi)
+            logger.info(
+                f"Eski Milvus hafızası ({collection_adi}) tamamen silindi! Asistan artık sadece yeni belgeyi tanıyacak.")
+        # =========================================================================
+
         # 3. Milvus'a vektörleştirip yazma
+        # Not: _embed_and_store fonksiyonun koleksiyon silindikten sonra
+        # yeniden oluşturmayı (create_collection) destekliyor olmalıdır.
         total_chunks = _embed_and_store(processed_chunks, db_doc)
 
         # Güncelleme: Başarılı
